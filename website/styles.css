@@ -86,7 +86,7 @@ body {
 }
 
 .completion-panel h2 {
-  margin: 0 0 8px;
+  margin: 8px 0px 0px 0px;
   font-size: 14px;
 }
 
@@ -114,9 +114,52 @@ body {
 }
 
 .game-panel {
+  position: relative;
   background: var(--panel);
   border-radius: 12px;
   padding: 12px;
+}
+
+.game-message {
+  position: absolute;
+  inset: 12px;
+  border-radius: 8px;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  background: rgba(238, 228, 218, 0.73);
+  z-index: 3;
+}
+
+.game-message.visible {
+  display: flex;
+  animation: fade-in 180ms ease-out;
+}
+
+.game-message-text {
+  margin: 0;
+  color: #776e65;
+  font-size: clamp(30px, 8vw, 52px);
+  font-weight: 700;
+}
+
+.retry-button {
+  border: none;
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 4px;
+  background: #8f7a66;
+  color: var(--text-light);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.retry-button:hover {
+  background: #9f8b77;
 }
 
 .board {
@@ -232,5 +275,13 @@ body {
 
   #restart {
     width: 100%;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

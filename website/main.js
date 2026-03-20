@@ -175,6 +175,20 @@ function createRangeTile(config, start, end, symbol) {
     symbol: symbol ?? (start === end ? config.atoms[start] ?? `${config.id}[${start}]` : `${config.id}[${start},${end}]`)
   };
 }
+function getSequenceLength(sequenceId, configMap) {
+  const config = configMap.get(sequenceId);
+  if (!config) {
+    return null;
+  }
+  return config.atoms.length;
+}
+function isFinalTile(tile, configMap) {
+  const sequenceLength = getSequenceLength(tile.sequenceId, configMap);
+  if (sequenceLength === null) {
+    return false;
+  }
+  return tile.start === 0 && tile.end === sequenceLength - 1;
+}
 function slideBoard(board, dir) {
   const { rowCount, colCount } = assertRectangularBoard(board);
   const lineCount = dir === "Left" || dir === "Right" ? rowCount : colCount;
@@ -212,6 +226,11 @@ function slideBoard(board, dir) {
   return { board: nextBoard, events, changed };
 }
 function canMergeTiles(first, second, dir, configMap) {
+  const firstIsFinal = isFinalTile(first, configMap);
+  const secondIsFinal = isFinalTile(second, configMap);
+  if (firstIsFinal && secondIsFinal) {
+    return true;
+  }
   if (first.sequenceId !== second.sequenceId) {
     return false;
   }
@@ -226,6 +245,14 @@ function canMergeTiles(first, second, dir, configMap) {
   return buildMergePlan(first, second, config, config.allowReverseMerge === true) !== null;
 }
 function mergeTiles(first, second, configMap) {
+  const firstIsFinal = isFinalTile(first, configMap);
+  const secondIsFinal = isFinalTile(second, configMap);
+  if (firstIsFinal && secondIsFinal) {
+    return {
+      removeFirst: true,
+      removeSecond: true
+    };
+  }
   if (first.sequenceId !== second.sequenceId) {
     throw new Error("Cannot merge tiles from different sequenceId");
   }
@@ -243,10 +270,14 @@ function mergeTiles(first, second, configMap) {
     throw new Error("Cannot merge non-continuous intervals");
   }
   const { orderedFirst, orderedSecond, start, end } = mergePlan;
+  const resultTile = createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
   const completed = start === 0 && end === normalizedConfig.atoms.length - 1;
   if (completed) {
     return {
-      completed: true,
+      removeFirst: false,
+      removeSecond: true,
+      resultTile,
+      completedSequenceId: normalizedConfig.id,
       rewardEvent: {
         sequenceId: normalizedConfig.id,
         reward: normalizedConfig.reward
@@ -254,8 +285,9 @@ function mergeTiles(first, second, configMap) {
     };
   }
   return {
-    completed: false,
-    resultTile: createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`)
+    removeFirst: false,
+    removeSecond: true,
+    resultTile
   };
 }
 function findMergeCandidates(board, dir, configMap) {
@@ -332,30 +364,27 @@ function applyMerges(board, selected, configMap) {
     }
     const merged = mergeTiles(first, second, configMap);
     changed = true;
-    nextBoard[r2][c2] = null;
-    if (merged.completed) {
+    if (merged.removeSecond) {
+      nextBoard[r2][c2] = null;
+    }
+    if (merged.removeFirst) {
       nextBoard[r1][c1] = null;
-      events.push({
-        type: "merge",
-        consumedTileIds: [first.id, second.id],
-        anchor: [r1, c1],
-        completedSequenceId: first.sequenceId
-      });
-      if (merged.rewardEvent) {
-        rewards.push(merged.rewardEvent);
-        events.push({
-          type: "reward",
-          sequenceId: merged.rewardEvent.sequenceId,
-          reward: merged.rewardEvent.reward
-        });
-      }
     } else if (merged.resultTile) {
       nextBoard[r1][c1] = merged.resultTile;
+    }
+    events.push({
+      type: "merge",
+      consumedTileIds: [first.id, second.id],
+      anchor: [r1, c1],
+      ...merged.resultTile ? { resultTile: merged.resultTile } : {},
+      ...merged.completedSequenceId ? { completedSequenceId: merged.completedSequenceId } : {}
+    });
+    if (merged.rewardEvent) {
+      rewards.push(merged.rewardEvent);
       events.push({
-        type: "merge",
-        consumedTileIds: [first.id, second.id],
-        anchor: [r1, c1],
-        resultTile: merged.resultTile
+        type: "reward",
+        sequenceId: merged.rewardEvent.sequenceId,
+        reward: merged.rewardEvent.reward
       });
     }
   }
@@ -436,188 +465,170 @@ function step(board, dir, configs, spawnPolicy) {
     rewards
   };
 }
-// src/ui/main.ts
-var BOARD_COLS = 4;
+// src/ui/constants.ts
+var ElPsyCongroo = (xs) => xs.map((c) => String.fromCharCode(c)).join("");
 var BOARD_ROWS = 4;
+var BOARD_COLS = 4;
 var DIRECTIONS = ["Left", "Right", "Up", "Down"];
-var seq = ({
-  id,
-  atoms = id.replace(/[，|。|？|！]/g, "").split(""),
-  relations = ["H", "V"],
-  allowReverseMerge = true,
-  score = 100
-}) => ({
-  id,
-  atoms,
-  reward: { score },
-  relations,
-  allowReverseMerge
-});
-var configs = [
-  seq({ id: "代数儿何" }),
-  seq({ id: "這種成績，使人汗顏！如此成績，如何招生？" })
-];
-var boardElement = document.querySelector("#board");
-var scoreElement = document.querySelector("#score");
-var movesElement = document.querySelector("#moves");
-var statusElement = document.querySelector("#status");
-var eventsElement = document.querySelector("#events");
-var completedCountsElement = document.querySelector("#completed-counts");
-var restartButton = document.querySelector("#restart");
-if (!boardElement || !scoreElement || !movesElement || !statusElement || !eventsElement || !completedCountsElement || !restartButton) {
-  throw new Error("UI mount failed: missing required elements");
-}
-var atomIndex = buildAtomIndex(configs);
-var atomPool = listAtomDefinitions(configs);
-var configMap = buildConfigMap(configs);
-function createInitialCompletedCounts() {
-  const counts = {};
-  for (const config of configs) {
-    counts[config.id] = 0;
-  }
-  return counts;
-}
-var state = {
-  board: createEmptyBoard(BOARD_ROWS, BOARD_COLS),
-  score: 0,
-  moves: 0,
-  status: "Use arrow keys or buttons to move.",
-  eventLines: [],
-  completedCounts: createInitialCompletedCounts()
+var STATUS_TEXT = {
+  ready: "Use arrow keys or buttons to move.",
+  noMove: "No tiles moved.",
+  moveApplied: "Move applied.",
+  gameOver: ElPsyCongroo([25105, 23459, 24067, 20320, 24050, 32147, 19981, 26159, 25105, 30340, 23416, 29983, 20102, 33])
 };
-function randInt(maxExclusive) {
-  return Math.floor(Math.random() * maxExclusive);
+var GAME_OVER_TEXT = STATUS_TEXT.gameOver;
+var RETRY_TEXT = ElPsyCongroo([30003, 35831, 20854, 20182, 23548, 24072]);
+var StrategicRatio = { p: 7, q: 8 };
+
+// src/ui/deadlock.ts
+function samePosition2(a, b) {
+  return a[0] === b[0] && a[1] === b[1];
 }
-function randomFrom(items) {
-  return items[randInt(items.length)];
-}
-function getTileAt(board, row, col) {
-  if (row < 0 || row >= board.length || col < 0) {
-    return null;
-  }
-  if (col >= board[row].length) {
-    return null;
-  }
-  return board[row][col];
-}
-function scoreSpawnCandidate(board, row, col, atom) {
-  const previewTile = {
-    id: -1,
-    sequenceId: atom.sequenceId,
-    start: atom.atomIndex,
-    end: atom.atomIndex,
-    symbol: atom.atomSymbol
-  };
-  const left = getTileAt(board, row, col - 1);
-  const right = getTileAt(board, row, col + 1);
-  const up = getTileAt(board, row - 1, col);
-  const down = getTileAt(board, row + 1, col);
-  let score = 0;
-  if (left && canMergeTiles(left, previewTile, "Left", configMap)) {
-    score += 14;
-  }
-  if (right && canMergeTiles(previewTile, right, "Left", configMap)) {
-    score += 14;
-  }
-  if (up && canMergeTiles(up, previewTile, "Up", configMap)) {
-    score += 14;
-  }
-  if (down && canMergeTiles(previewTile, down, "Up", configMap)) {
-    score += 14;
-  }
-  const neighbors = [left, right, up, down];
-  for (const neighbor of neighbors) {
-    if (!neighbor) {
-      score += 0.25;
-      continue;
+function getLinePositions2(rowCount, colCount, dir, line) {
+  const positions = [];
+  if (dir === "Left") {
+    for (let col = 0;col < colCount; col += 1) {
+      positions.push([line, col]);
     }
-    if (neighbor.sequenceId === previewTile.sequenceId) {
-      score += 2;
-      score += Math.min(3, (neighbor.end - neighbor.start + 1) * 0.6);
+    return positions;
+  }
+  if (dir === "Right") {
+    for (let col = colCount - 1;col >= 0; col -= 1) {
+      positions.push([line, col]);
     }
+    return positions;
   }
-  if (atom.atomIndex === 0) {
-    score += 0.75;
+  if (dir === "Up") {
+    for (let row = 0;row < rowCount; row += 1) {
+      positions.push([row, line]);
+    }
+    return positions;
   }
-  return score;
+  for (let row = rowCount - 1;row >= 0; row -= 1) {
+    positions.push([row, line]);
+  }
+  return positions;
 }
-function strategicSpawnPolicy(req) {
-  const empties = [];
-  for (let row = 0;row < req.board.length; row += 1) {
-    for (let col = 0;col < req.board[row].length; col += 1) {
-      if (req.board[row][col] === null) {
-        empties.push([row, col]);
+function hasSlideSpace(board, dir) {
+  const rowCount = board.length;
+  if (rowCount === 0) {
+    return false;
+  }
+  const colCount = board[0]?.length ?? 0;
+  if (colCount === 0) {
+    return false;
+  }
+  const lineCount = dir === "Left" || dir === "Right" ? rowCount : colCount;
+  for (let line = 0;line < lineCount; line += 1) {
+    const positions = getLinePositions2(rowCount, colCount, dir, line);
+    const occupied = [];
+    for (const pos of positions) {
+      if (board[pos[0]][pos[1]] !== null) {
+        occupied.push(pos);
+      }
+    }
+    for (let i = 0;i < occupied.length; i += 1) {
+      if (!samePosition2(occupied[i], positions[i])) {
+        return true;
       }
     }
   }
-  if (!empties.length || !atomPool.length) {
-    return null;
+  return false;
+}
+function hasMergeOpportunity(board, dir, configMap) {
+  const rowCount = board.length;
+  if (rowCount === 0) {
+    return false;
   }
-  const rowCount = req.board.length;
-  const colCount = req.board[0]?.length ?? 0;
-  const totalCells = rowCount * colCount;
-  const occupiedCells = totalCells - empties.length;
-  const shouldUseStrategic = totalCells > 0 && occupiedCells * 4 >= totalCells * 3;
-  if (!shouldUseStrategic) {
-    const randomPosition = randomFrom(empties);
-    const randomAtom = randomFrom(atomPool);
-    return {
-      position: randomPosition,
-      tile: createAtomicTile(randomAtom.sequenceId, randomAtom.atomIndex, randomAtom.atomSymbol)
-    };
+  const colCount = board[0]?.length ?? 0;
+  if (colCount === 0) {
+    return false;
   }
-  let bestScore = Number.NEGATIVE_INFINITY;
-  const bestCandidates = [];
-  for (const position of empties) {
-    const [row, col] = position;
-    for (const atom of atomPool) {
-      const score = scoreSpawnCandidate(req.board, row, col, atom);
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidates.length = 0;
-        bestCandidates.push({ position, atom });
+  if (dir === "Left" || dir === "Right") {
+    for (let row = 0;row < rowCount; row += 1) {
+      for (let col = 0;col < colCount - 1; col += 1) {
+        const first = board[row][col];
+        const second = board[row][col + 1];
+        if (!first || !second) {
+          continue;
+        }
+        if (canMergeTiles(first, second, dir, configMap)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  for (let col = 0;col < colCount; col += 1) {
+    for (let row = 0;row < rowCount - 1; row += 1) {
+      const first = board[row][col];
+      const second = board[row + 1][col];
+      if (!first || !second) {
         continue;
       }
-      if (score === bestScore) {
-        bestCandidates.push({ position, atom });
+      if (canMergeTiles(first, second, dir, configMap)) {
+        return true;
       }
     }
   }
-  if (bestScore <= 0 || !bestCandidates.length) {
-    const fallbackPosition = randomFrom(empties);
-    const fallbackAtom = randomFrom(atomPool);
-    return {
-      position: fallbackPosition,
-      tile: createAtomicTile(fallbackAtom.sequenceId, fallbackAtom.atomIndex, fallbackAtom.atomSymbol)
-    };
+  return false;
+}
+function hasAvailableMove(board, directions, configMap) {
+  for (const dir of directions) {
+    if (hasSlideSpace(board, dir) || hasMergeOpportunity(board, dir, configMap)) {
+      return true;
+    }
   }
-  const selected = randomFrom(bestCandidates);
+  return false;
+}
+
+// src/ui/dom.ts
+function requireElement(selector) {
+  const element = document.querySelector(selector);
+  if (!element) {
+    throw new Error(`UI mount failed: missing required element: ${selector}`);
+  }
+  return element;
+}
+function mountUi() {
+  const boardElement = requireElement("#board");
+  const scoreElement = requireElement("#score");
+  const movesElement = requireElement("#moves");
+  const statusElement = requireElement("#status");
+  const eventsElement = requireElement("#events");
+  const completedCountsElement = requireElement("#completed-counts");
+  const restartButton = requireElement("#restart");
+  const gamePanelElement = requireElement(".game-panel");
+  const gameMessageElement = document.createElement("div");
+  gameMessageElement.className = "game-message";
+  gameMessageElement.setAttribute("aria-live", "assertive");
+  const gameMessageTextElement = document.createElement("p");
+  gameMessageTextElement.className = "game-message-text";
+  gameMessageTextElement.textContent = GAME_OVER_TEXT;
+  const retryButtonElement = document.createElement("button");
+  retryButtonElement.type = "button";
+  retryButtonElement.className = "retry-button";
+  retryButtonElement.textContent = RETRY_TEXT;
+  gameMessageElement.append(gameMessageTextElement, retryButtonElement);
+  gamePanelElement.appendChild(gameMessageElement);
   return {
-    position: selected.position,
-    tile: createAtomicTile(selected.atom.sequenceId, selected.atom.atomIndex, selected.atom.atomSymbol)
+    boardElement,
+    scoreElement,
+    movesElement,
+    statusElement,
+    eventsElement,
+    completedCountsElement,
+    restartButton,
+    gameMessageElement,
+    retryButtonElement
   };
 }
-function placeSpawn(board, spawn) {
-  const next = board.map((row2) => row2.slice());
-  const [row, col] = spawn.position;
-  next[row][col] = spawn.tile;
-  return next;
+function updateGameOverUI(ui, gameOver) {
+  ui.gameMessageElement.classList.toggle("visible", gameOver);
+  ui.retryButtonElement.disabled = !gameOver;
 }
-function seedBoard() {
-  state.board = createEmptyBoard(BOARD_ROWS, BOARD_COLS);
-  state.score = 0;
-  state.moves = 0;
-  state.eventLines = [];
-  state.status = "Use arrow keys or buttons to move.";
-  state.completedCounts = createInitialCompletedCounts();
-  for (let i = 0;i < 2; i += 1) {
-    const spawn = strategicSpawnPolicy({ board: state.board, configs });
-    if (!spawn) {
-      break;
-    }
-    state.board = placeSpawn(state.board, spawn);
-  }
-}
+
+// src/ui/render.ts
 function tileClass(tile) {
   const length = tile.end - tile.start + 1;
   const level = Math.min(6, Math.max(1, length));
@@ -661,7 +672,7 @@ function formatEvent(event) {
       return "event";
   }
 }
-function renderBoard(board) {
+function renderBoard(board, boardElement) {
   const fragment = document.createDocumentFragment();
   const columnCount = getBoardColumnCount(board);
   boardElement.style.setProperty("--board-cols", String(Math.max(1, columnCount)));
@@ -682,7 +693,7 @@ function renderBoard(board) {
   }
   boardElement.replaceChildren(fragment);
 }
-function renderCompletedCounts() {
+function renderCompletedCounts(completedCountsElement, completedCounts, configs) {
   const fragment = document.createDocumentFragment();
   for (const config of configs) {
     const item = document.createElement("li");
@@ -690,20 +701,220 @@ function renderCompletedCounts() {
     const label = document.createElement("span");
     label.textContent = config.id;
     const value = document.createElement("strong");
-    value.textContent = String(state.completedCounts[config.id] ?? 0);
+    value.textContent = String(completedCounts[config.id] ?? 0);
     item.append(label, value);
     fragment.appendChild(item);
   }
-  completedCountsElement?.replaceChildren(fragment);
+  completedCountsElement.replaceChildren(fragment);
 }
-function render() {
-  scoreElement.textContent = String(state.score);
-  movesElement.textContent = String(state.moves);
-  statusElement.textContent = state.status;
-  eventsElement.textContent = state.eventLines.join(`
+function render(ui, state, configs) {
+  ui.scoreElement.textContent = String(state.score);
+  ui.movesElement.textContent = String(state.moves);
+  ui.statusElement.textContent = state.status;
+  ui.eventsElement.textContent = state.eventLines.join(`
 `);
-  renderCompletedCounts();
-  renderBoard(state.board);
+  renderCompletedCounts(ui.completedCountsElement, state.completedCounts, configs);
+  renderBoard(state.board, ui.boardElement);
+  updateGameOverUI(ui, state.gameOver);
+}
+
+// src/ui/sequences.ts
+var seq = ({
+  id,
+  atoms = id.replace(/[，|。|？|！]/g, "").split(""),
+  relations = ["H", "V"],
+  allowReverseMerge = true,
+  score = 100
+}) => ({
+  id,
+  atoms,
+  reward: { score },
+  relations,
+  allowReverseMerge
+});
+var configs = [
+  seq({ id: "這種成績，使人汗顏！如此成績，如何招生？" }),
+  seq({ id: "不照規則，不會拿到求真書院的學位！", atoms: ["不照規則，", "不會拿到求真書院的學位！"] }),
+  {
+    id: "求真子弟，必须尋天人樂處，拓万古心胸。",
+    atoms: ["求真子弟", "必须尋天人樂處", "拓万古心胸"],
+    reward: { score: 100 },
+    relations: ["H", "V"],
+    allowReverseMerge: true
+  }
+];
+
+// src/ui/spawn-policy.ts
+function randInt(maxExclusive) {
+  return Math.floor(Math.random() * maxExclusive);
+}
+function randomFrom(items) {
+  return items[randInt(items.length)];
+}
+function getTileAt(board, row, col) {
+  if (row < 0 || row >= board.length || col < 0) {
+    return null;
+  }
+  if (col >= board[row].length) {
+    return null;
+  }
+  return board[row][col];
+}
+function getEmptyPositions(board) {
+  const empties = [];
+  for (let row = 0;row < board.length; row += 1) {
+    for (let col = 0;col < board[row].length; col += 1) {
+      if (board[row][col] === null) {
+        empties.push([row, col]);
+      }
+    }
+  }
+  return empties;
+}
+function scoreSpawnCandidate(board, row, col, atom, configMap) {
+  const previewTile = {
+    id: -1,
+    sequenceId: atom.sequenceId,
+    start: atom.atomIndex,
+    end: atom.atomIndex,
+    symbol: atom.atomSymbol
+  };
+  const left = getTileAt(board, row, col - 1);
+  const right = getTileAt(board, row, col + 1);
+  const up = getTileAt(board, row - 1, col);
+  const down = getTileAt(board, row + 1, col);
+  let score = 0;
+  if (left && canMergeTiles(left, previewTile, "Left", configMap)) {
+    score += 14;
+  }
+  if (right && canMergeTiles(previewTile, right, "Left", configMap)) {
+    score += 14;
+  }
+  if (up && canMergeTiles(up, previewTile, "Up", configMap)) {
+    score += 14;
+  }
+  if (down && canMergeTiles(previewTile, down, "Up", configMap)) {
+    score += 14;
+  }
+  const neighbors = [left, right, up, down];
+  for (const neighbor of neighbors) {
+    if (!neighbor) {
+      score += 0.25;
+      continue;
+    }
+    if (neighbor.sequenceId === previewTile.sequenceId) {
+      score += 2;
+      score += Math.min(3, (neighbor.end - neighbor.start + 1) * 0.6);
+    }
+  }
+  if (atom.atomIndex === 0) {
+    score += 0.75;
+  }
+  return score;
+}
+function randomSpawn(empties, atomPool) {
+  const randomPosition = randomFrom(empties);
+  const randomAtom = randomFrom(atomPool);
+  return {
+    position: randomPosition,
+    tile: createAtomicTile(randomAtom.sequenceId, randomAtom.atomIndex, randomAtom.atomSymbol)
+  };
+}
+function createStrategicSpawnPolicy(atomPool, configMap) {
+  return function strategicSpawnPolicy(req) {
+    const empties = getEmptyPositions(req.board);
+    if (!empties.length || !atomPool.length) {
+      return null;
+    }
+    const rowCount = req.board.length;
+    const colCount = req.board[0]?.length ?? 0;
+    const totalCells = rowCount * colCount;
+    const occupiedCells = totalCells - empties.length;
+    const shouldUseStrategic = totalCells > 0 && occupiedCells * StrategicRatio.q >= totalCells * StrategicRatio.p;
+    if (!shouldUseStrategic) {
+      return randomSpawn(empties, atomPool);
+    }
+    let bestScore = Number.NEGATIVE_INFINITY;
+    const bestCandidates = [];
+    for (const position of empties) {
+      const [row, col] = position;
+      for (const atom of atomPool) {
+        const score = scoreSpawnCandidate(req.board, row, col, atom, configMap);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCandidates.length = 0;
+          bestCandidates.push({ position, atom });
+          continue;
+        }
+        if (score === bestScore) {
+          bestCandidates.push({ position, atom });
+        }
+      }
+    }
+    if (bestScore <= 0 || !bestCandidates.length) {
+      return randomSpawn(empties, atomPool);
+    }
+    const selected = randomFrom(bestCandidates);
+    return {
+      position: selected.position,
+      tile: createAtomicTile(selected.atom.sequenceId, selected.atom.atomIndex, selected.atom.atomSymbol)
+    };
+  };
+}
+
+// src/ui/state.ts
+function createInitialCompletedCounts(configs2) {
+  const counts = {};
+  for (const config of configs2) {
+    counts[config.id] = 0;
+  }
+  return counts;
+}
+function createInitialState(configs2) {
+  return {
+    board: createEmptyBoard(BOARD_ROWS, BOARD_COLS),
+    score: 0,
+    moves: 0,
+    status: STATUS_TEXT.ready,
+    eventLines: [],
+    completedCounts: createInitialCompletedCounts(configs2),
+    gameOver: false
+  };
+}
+
+// src/ui/main.ts
+var ui = mountUi();
+var atomIndex = buildAtomIndex(configs);
+var atomPool = listAtomDefinitions(configs);
+var configMap = buildConfigMap(configs);
+var spawnPolicy = createStrategicSpawnPolicy(atomPool, configMap);
+var state = createInitialState(configs);
+function placeSpawn(board, spawn) {
+  const next = board.map((row2) => row2.slice());
+  const [row, col] = spawn.position;
+  next[row][col] = spawn.tile;
+  return next;
+}
+function resetState() {
+  const next = createInitialState(configs);
+  state.board = next.board;
+  state.score = next.score;
+  state.moves = next.moves;
+  state.status = next.status;
+  state.eventLines = next.eventLines;
+  state.completedCounts = next.completedCounts;
+  state.gameOver = next.gameOver;
+}
+function seedBoard() {
+  resetState();
+  for (let i = 0;i < 2; i += 1) {
+    const spawn = spawnPolicy({ board: state.board, configs });
+    if (!spawn) {
+      break;
+    }
+    state.board = placeSpawn(state.board, spawn);
+  }
+  updateGameOverState(state.board);
 }
 function applyCompletionCounts(events) {
   for (const event of events) {
@@ -714,21 +925,40 @@ function applyCompletionCounts(events) {
     state.completedCounts[sequenceId] = (state.completedCounts[sequenceId] ?? 0) + 1;
   }
 }
+function updateGameOverState(board) {
+  state.gameOver = !hasAvailableMove(board, DIRECTIONS, configMap);
+  if (state.gameOver) {
+    state.status = STATUS_TEXT.gameOver;
+  }
+}
+function setStatusAfterMove(scoreDelta) {
+  if (state.gameOver) {
+    return;
+  }
+  state.status = scoreDelta > 0 ? `Gained ${scoreDelta} score this move.` : STATUS_TEXT.moveApplied;
+}
 function executeMove(direction) {
-  const result = step(state.board, direction, configs, strategicSpawnPolicy);
+  if (state.gameOver) {
+    return;
+  }
+  const result = step(state.board, direction, configs, spawnPolicy);
   if (!result.changed) {
-    state.status = "No tiles moved.";
-    render();
+    updateGameOverState(state.board);
+    if (!state.gameOver) {
+      state.status = STATUS_TEXT.noMove;
+    }
+    render(ui, state, configs);
     return;
   }
   state.board = result.board;
   state.moves += 1;
-  const scoreDelta = result.rewards.reduce((acc, item) => acc + (item.reward?.score ?? 0), 0);
+  const scoreDelta = result.rewards.reduce((acc, reward) => acc + (reward.reward?.score ?? 0), 0);
   state.score += scoreDelta;
   applyCompletionCounts(result.events);
-  state.status = scoreDelta > 0 ? `Gained ${scoreDelta} score this move.` : "Move applied.";
+  updateGameOverState(state.board);
+  setStatusAfterMove(scoreDelta);
   state.eventLines = result.events.slice(-8).map(formatEvent);
-  render();
+  render(ui, state, configs);
 }
 function parseDirection(value) {
   if (!value) {
@@ -758,11 +988,15 @@ document.querySelectorAll("button[data-dir]").forEach((button) => {
     }
   });
 });
-restartButton.addEventListener("click", () => {
+function restartGame() {
   seedBoard();
-  render();
+  render(ui, state, configs);
+}
+ui.restartButton.addEventListener("click", restartGame);
+ui.retryButtonElement.addEventListener("click", () => {
+  window.open(ElPsyCongroo([104, 116, 116, 112, 115, 58, 47, 47, 116, 105, 97, 110, 46, 98, 105, 99, 109, 114, 46, 112, 107, 117, 46, 101, 100, 117, 46, 99, 110]), "_blank", "noopener,noreferrer");
 });
 seedBoard();
-render();
+render(ui, state, configs);
 console.log("Atom index:", atomIndex);
 console.log("Atom pool size:", atomPool.length);

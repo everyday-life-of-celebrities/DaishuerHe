@@ -146,6 +146,13 @@ type MergePlan = {
   start: number;
   end: number;
 };
+type MergeTilesResult = {
+  removeFirst: boolean;
+  removeSecond: boolean;
+  resultTile?: Tile;
+  rewardEvent?: RewardEvent;
+  completedSequenceId?: string;
+};
 
 export function createAtomicTile(sequenceId: string, atomIndex: number, atomSymbol: string): Tile {
   return {
@@ -251,6 +258,23 @@ function createRangeTile(config: NormalizedSequenceConfig, start: number, end: n
       (start === end ? (config.atoms[start] ?? `${config.id}[${start}]`) : `${config.id}[${start},${end}]`)
   };
 }
+function getSequenceLength(sequenceId: string, configMap: Map<string, SequenceConfig>): number | null {
+  const config = configMap.get(sequenceId);
+  if (!config) {
+    return null;
+  }
+
+  return config.atoms.length;
+}
+
+function isFinalTile(tile: Tile, configMap: Map<string, SequenceConfig>): boolean {
+  const sequenceLength = getSequenceLength(tile.sequenceId, configMap);
+  if (sequenceLength === null) {
+    return false;
+  }
+
+  return tile.start === 0 && tile.end === sequenceLength - 1;
+}
 
 export function slideBoard(
   board: Board,
@@ -309,6 +333,12 @@ export function canMergeTiles(
   dir: MoveDirection,
   configMap: Map<string, SequenceConfig>
 ): boolean {
+  const firstIsFinal = isFinalTile(first, configMap);
+  const secondIsFinal = isFinalTile(second, configMap);
+  if (firstIsFinal && secondIsFinal) {
+    return true;
+  }
+
   if (first.sequenceId !== second.sequenceId) {
     return false;
   }
@@ -330,11 +360,16 @@ export function mergeTiles(
   first: Tile,
   second: Tile,
   configMap: Map<string, SequenceConfig>
-): {
-  completed: boolean;
-  resultTile?: Tile;
-  rewardEvent?: RewardEvent;
-} {
+): MergeTilesResult {
+  const firstIsFinal = isFinalTile(first, configMap);
+  const secondIsFinal = isFinalTile(second, configMap);
+  if (firstIsFinal && secondIsFinal) {
+    return {
+      removeFirst: true,
+      removeSecond: true
+    };
+  }
+
   if (first.sequenceId !== second.sequenceId) {
     throw new Error("Cannot merge tiles from different sequenceId");
   }
@@ -356,11 +391,15 @@ export function mergeTiles(
   }
 
   const { orderedFirst, orderedSecond, start, end } = mergePlan;
+  const resultTile = createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
   const completed = start === 0 && end === normalizedConfig.atoms.length - 1;
 
   if (completed) {
     return {
-      completed: true,
+      removeFirst: false,
+      removeSecond: true,
+      resultTile,
+      completedSequenceId: normalizedConfig.id,
       rewardEvent: {
         sequenceId: normalizedConfig.id,
         reward: normalizedConfig.reward
@@ -369,8 +408,9 @@ export function mergeTiles(
   }
 
   return {
-    completed: false,
-    resultTile: createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`)
+    removeFirst: false,
+    removeSecond: true,
+    resultTile
   };
 }
 
@@ -480,32 +520,30 @@ export function applyMerges(
     const merged = mergeTiles(first, second, configMap);
     changed = true;
 
-    nextBoard[r2][c2] = null;
+    if (merged.removeSecond) {
+      nextBoard[r2][c2] = null;
+    }
 
-    if (merged.completed) {
+    if (merged.removeFirst) {
       nextBoard[r1][c1] = null;
-      events.push({
-        type: "merge",
-        consumedTileIds: [first.id, second.id],
-        anchor: [r1, c1],
-        completedSequenceId: first.sequenceId
-      });
-
-      if (merged.rewardEvent) {
-        rewards.push(merged.rewardEvent);
-        events.push({
-          type: "reward",
-          sequenceId: merged.rewardEvent.sequenceId,
-          reward: merged.rewardEvent.reward
-        });
-      }
     } else if (merged.resultTile) {
       nextBoard[r1][c1] = merged.resultTile;
+    }
+
+    events.push({
+      type: "merge",
+      consumedTileIds: [first.id, second.id],
+      anchor: [r1, c1],
+      ...(merged.resultTile ? { resultTile: merged.resultTile } : {}),
+      ...(merged.completedSequenceId ? { completedSequenceId: merged.completedSequenceId } : {})
+    });
+
+    if (merged.rewardEvent) {
+      rewards.push(merged.rewardEvent);
       events.push({
-        type: "merge",
-        consumedTileIds: [first.id, second.id],
-        anchor: [r1, c1],
-        resultTile: merged.resultTile
+        type: "reward",
+        sequenceId: merged.rewardEvent.sequenceId,
+        reward: merged.rewardEvent.reward
       });
     }
   }
