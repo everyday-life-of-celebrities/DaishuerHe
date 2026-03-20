@@ -33,10 +33,62 @@ function getBoardColumnCount(board: Board): number {
   return board[0]?.length ?? 0;
 }
 
-function computeTileFontSize(tile: Tile): number {
+function parseCssPixels(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function estimateCellSize(boardElement: HTMLDivElement, columnCount: number): number {
+  const safeColumnCount = Math.max(1, columnCount);
+  const boardWidth = boardElement.clientWidth;
+
+  if (boardWidth <= 0) {
+    return 72;
+  }
+
+  const style = window.getComputedStyle(boardElement);
+  const gap = parseCssPixels(style.columnGap || style.gap);
+  const totalGap = Math.max(0, safeColumnCount - 1) * gap;
+  return Math.max(24, (boardWidth - totalGap) / safeColumnCount);
+}
+
+const FONT_SIZE_SCALE = 0.9;
+const FONT_SIZE_CELL_REFERENCE = 96;
+const FONT_SIZE_CELL_EXPONENT = 0.9;
+
+function computeFontSizeBaseline(glyphCount: number): number {
+  // Keep the original slower shrink style: ~25px for short text, ~21px around 25 glyphs.
+  return 25 - (glyphCount - 1) / 6;
+}
+
+function computeFontSizeFitCap(cellSize: number, glyphCount: number): number {
+  const usable = Math.max(16, cellSize - 8);
+
+  const estimatedCols = Math.max(1, Math.ceil(Math.sqrt(glyphCount)));
+  const estimatedRows = Math.max(1, Math.ceil(glyphCount / estimatedCols));
+
+  const widthCap = usable / (estimatedCols * 0.95);
+  const heightCap = usable / (estimatedRows * 1.08);
+  return Math.min(widthCap, heightCap);
+}
+
+function computeTileFontSize(tile: Tile, cellSize: number): number {
   const glyphCount = Math.max(1, Array.from(tile.symbol).length);
-  const size = (-2 / 5) * glyphCount + 25;
-  return Math.max(12, size);
+
+  const baseline = computeFontSizeBaseline(glyphCount);
+  const fitCap = computeFontSizeFitCap(cellSize, glyphCount);
+
+  const rawCellScale = Math.pow(cellSize / FONT_SIZE_CELL_REFERENCE, FONT_SIZE_CELL_EXPONENT);
+  const cellScale = Math.min(1, Math.max(0.62, rawCellScale));
+  const computed = Math.min(baseline, fitCap) * FONT_SIZE_SCALE * cellScale;
+
+  const minSize = Math.max(9, Math.min(12, cellSize * 0.16));
+  const maxSize = 26;
+  return Math.max(minSize, Math.min(maxSize, computed));
 }
 
 export function formatEvent(event: MoveEvent): string {
@@ -66,6 +118,8 @@ function renderBoard(
   const columnCount = getBoardColumnCount(board);
   boardElement.style.setProperty("--board-cols", String(Math.max(1, columnCount)));
 
+  const cellSize = estimateCellSize(boardElement, columnCount);
+
   for (let row = 0; row < board.length; row += 1) {
     for (let col = 0; col < board[row].length; col += 1) {
       const cell = document.createElement("div");
@@ -75,7 +129,7 @@ function renderBoard(
       if (tile) {
         const tileElement = document.createElement("div");
         tileElement.className = tileClass(tile, sequenceLengthMap);
-        tileElement.style.setProperty("--tile-font-size", `${computeTileFontSize(tile)}px`);
+        tileElement.style.setProperty("--tile-font-size", `${computeTileFontSize(tile, cellSize)}px`);
         tileElement.textContent = tile.symbol;
         cell.appendChild(tileElement);
       }
