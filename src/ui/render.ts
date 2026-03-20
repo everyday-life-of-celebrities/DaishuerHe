@@ -2,7 +2,28 @@ import type { Board, MoveEvent, SequenceConfig, Tile } from "../core";
 import { updateGameOverUI, type UiElements } from "./dom";
 import type { GameState } from "./state";
 
-function tileClass(tile: Tile): string {
+function buildSequenceLengthMap(configs: SequenceConfig[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const config of configs) {
+    map.set(config.id, config.atoms.length);
+  }
+  return map;
+}
+
+function isFinalTile(tile: Tile, sequenceLengthMap: Map<string, number>): boolean {
+  const sequenceLength = sequenceLengthMap.get(tile.sequenceId);
+  if (sequenceLength === undefined) {
+    return false;
+  }
+
+  return tile.start === 0 && tile.end === sequenceLength - 1;
+}
+
+function tileClass(tile: Tile, sequenceLengthMap: Map<string, number>): string {
+  if (isFinalTile(tile, sequenceLengthMap)) {
+    return "tile tile-l6";
+  }
+
   const length = tile.end - tile.start + 1;
   const level = Math.min(6, Math.max(1, length));
   return `tile tile-l${level}`;
@@ -36,7 +57,11 @@ export function formatEvent(event: MoveEvent): string {
   }
 }
 
-function renderBoard(board: Board, boardElement: HTMLDivElement): void {
+function renderBoard(
+  board: Board,
+  boardElement: HTMLDivElement,
+  sequenceLengthMap: Map<string, number>
+): void {
   const fragment = document.createDocumentFragment();
   const columnCount = getBoardColumnCount(board);
   boardElement.style.setProperty("--board-cols", String(Math.max(1, columnCount)));
@@ -49,7 +74,7 @@ function renderBoard(board: Board, boardElement: HTMLDivElement): void {
       const tile = board[row][col];
       if (tile) {
         const tileElement = document.createElement("div");
-        tileElement.className = tileClass(tile);
+        tileElement.className = tileClass(tile, sequenceLengthMap);
         tileElement.style.setProperty("--tile-font-size", `${computeTileFontSize(tile)}px`);
         tileElement.textContent = tile.symbol;
         cell.appendChild(tileElement);
@@ -93,7 +118,8 @@ export function render(ui: UiElements, state: GameState, configs: SequenceConfig
   ui.statusElement.textContent = state.status;
   ui.eventsElement.textContent = state.eventLines.join("\n");
 
+  const sequenceLengthMap = buildSequenceLengthMap(configs);
   renderCompletedCounts(ui.completedCountsElement, state.completedCounts, configs);
-  renderBoard(state.board, ui.boardElement);
+  renderBoard(state.board, ui.boardElement, sequenceLengthMap);
   updateGameOverUI(ui, state.gameOver);
 }
