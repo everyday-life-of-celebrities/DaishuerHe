@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sequence Grid Synth</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="topbar">
+        <div>
+          <h1>Sequence 2048</h1>
+          <p>Merge neighboring sequence intervals to complete targets.</p>
+        </div>
+        <button id="restart" type="button">Restart</button>
+      </header>
+
+      <section class="metrics">
+        <div class="metric">
+          <span>Score</span>
+          <strong id="score">0</strong>
+        </div>
+        <div class="metric">
+          <span>Moves</span>
+          <strong id="moves">0</strong>
+        </div>
+      </section>
+
+      <section class="completion-panel">
+        <h2>Completed Final Nodes</h2>
+        <ul id="completed-counts" class="completed-counts"></ul>
+      </section>
+
+      <section class="game-panel">
+        <div id="board" class="board" aria-label="game-board"></div>
+      </section>
+
+      <section class="controls">
+        <button type="button" data-dir="Up">↑</button>
+        <button type="button" data-dir="Left">←</button>
+        <button type="button" data-dir="Down">↓</button>
+        <button type="button" data-dir="Right">→</button>
+      </section>
+
+      <p id="status" class="status">Use arrow keys or buttons to move.</p>
+      <pre id="events" class="events" aria-live="polite"></pre>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
