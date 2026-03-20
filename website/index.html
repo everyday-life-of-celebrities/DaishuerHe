@@ -1,52 +1,59 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sequence Grid Synth</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main class="game-shell">
-      <header class="topbar">
-        <div>
-          <h1>Sequence 2048</h1>
-          <p>Merge neighboring sequence intervals to complete targets.</p>
-        </div>
-        <button id="restart" type="button">Restart</button>
-      </header>
 
-      <section class="metrics">
-        <div class="metric">
-          <span>Score</span>
-          <strong id="score">0</strong>
-        </div>
-        <div class="metric">
-          <span>Moves</span>
-          <strong id="moves">0</strong>
-        </div>
-      </section>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sequence Grid Synth</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
-      <section class="completion-panel">
-        <ul id="completed-counts" class="completed-counts"></ul>
-        <h2>发自我的手机</h2>
-      </section>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div>
+        <h1>2048 代数儿何</h1>
+        <p>移动方块来组装子句, 任意完整句子可合并消除</p>
+      </div>
+      <button id="restart" type="button">Restart</button>
+    </header>
 
-      <section class="game-panel">
-        <div id="board" class="board" aria-label="game-board"></div>
-      </section>
+    <section class="metrics">
+      <div class="metric">
+        <span>Score</span>
+        <strong id="score">0</strong>
+      </div>
+      <div class="metric">
+        <span>Best</span>
+        <strong id="best-score">0</strong>
+      </div>
+      <div class="metric">
+        <span>Moves</span>
+        <strong id="moves">0</strong>
+      </div>
+    </section>
 
-      <section class="controls">
-        <button type="button" data-dir="Up">↑</button>
-        <button type="button" data-dir="Left">←</button>
-        <button type="button" data-dir="Down">↓</button>
-        <button type="button" data-dir="Right">→</button>
-      </section>
+    <section class="game-panel">
+      <div id="board" class="board" aria-label="game-board"></div>
+    </section>
 
-      <p id="status" class="status">Use arrow keys or buttons to move.</p>
-      <pre id="events" class="events" aria-live="polite"></pre>
-    </main>
+    <section class="controls">
+      <button type="button" data-dir="Up">↑</button>
+      <button type="button" data-dir="Left">←</button>
+      <button type="button" data-dir="Down">↓</button>
+      <button type="button" data-dir="Right">→</button>
+    </section>
 
-    <script type="module" src="./main.js"></script>
-  </body>
+    <p id="status" class="status">Use arrow keys or buttons to move.</p>
+    <pre id="events" class="events" aria-live="polite"></pre>
+
+    <section class="completion-panel">
+      <ul id="completed-counts" class="completed-counts"></ul>
+      <h2>发自我的手机</h2>
+    </section>
+  </main>
+
+  <script type="module" src="./main.js"></script>
+</body>
+
 </html>

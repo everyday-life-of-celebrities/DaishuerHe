@@ -8,11 +8,12 @@ import {
   type MoveEvent,
   type SpawnResult
 } from "../core";
+import { loadBestScore, saveBestScore } from "./best-score";
 import { DIRECTIONS, ElPsyCongroo, STATUS_TEXT } from "./constants";
 import { hasAvailableMove } from "./deadlock";
 import { mountUi } from "./dom";
 import { formatEvent, render } from "./render";
-import { configs } from "./sequences";
+import { configs } from "./seq-data";
 import { createStrategicSpawnPolicy } from "./spawn-policy";
 import { createInitialState, type GameState } from "./state";
 
@@ -23,7 +24,7 @@ const atomPool = listAtomDefinitions(configs);
 const configMap = buildConfigMap(configs);
 const spawnPolicy = createStrategicSpawnPolicy(atomPool, configMap);
 
-const state: GameState = createInitialState(configs);
+const state: GameState = createInitialState(configs, loadBestScore());
 
 function placeSpawn(board: Board, spawn: Exclude<SpawnResult, null>): Board {
   const next = board.map((row) => row.slice());
@@ -33,9 +34,10 @@ function placeSpawn(board: Board, spawn: Exclude<SpawnResult, null>): Board {
 }
 
 function resetState(): void {
-  const next = createInitialState(configs);
+  const next = createInitialState(configs, state.bestScore);
   state.board = next.board;
   state.score = next.score;
+  state.bestScore = next.bestScore;
   state.moves = next.moves;
   state.status = next.status;
   state.eventLines = next.eventLines;
@@ -67,11 +69,21 @@ function applyCompletionCounts(events: MoveEvent[]): void {
     state.completedCounts[sequenceId] = (state.completedCounts[sequenceId] ?? 0) + 1;
   }
 }
+
 function updateGameOverState(board: Board): void {
   state.gameOver = !hasAvailableMove(board, DIRECTIONS, configMap);
   if (state.gameOver) {
     state.status = STATUS_TEXT.gameOver;
   }
+}
+
+function syncBestScore(): void {
+  if (state.score <= state.bestScore) {
+    return;
+  }
+
+  state.bestScore = state.score;
+  saveBestScore(state.bestScore);
 }
 
 function setStatusAfterMove(scoreDelta: number): void {
@@ -103,6 +115,7 @@ function executeMove(direction: MoveDirection): void {
 
   const scoreDelta = result.rewards.reduce((acc, reward) => acc + (reward.reward?.score ?? 0), 0);
   state.score += scoreDelta;
+  syncBestScore();
   applyCompletionCounts(result.events);
 
   updateGameOverState(state.board);
@@ -153,7 +166,11 @@ function restartGame(): void {
 
 ui.restartButton.addEventListener("click", restartGame);
 ui.retryButtonElement.addEventListener("click", () => {
-  window.open(ElPsyCongroo([104, 116, 116, 112, 115, 58, 47, 47, 116, 105, 97, 110, 46, 98, 105, 99, 109, 114, 46, 112, 107, 117, 46, 101, 100, 117, 46, 99, 110]), "_blank", "noopener,noreferrer");
+  window.open(
+    ElPsyCongroo([104, 116, 116, 112, 115, 58, 47, 47, 116, 105, 97, 110, 46, 98, 105, 99, 109, 114, 46, 112, 107, 117, 46, 101, 100, 117, 46, 99, 110]),
+    "_blank",
+    "noopener,noreferrer"
+  );
 });
 
 seedBoard();

@@ -99,68 +99,81 @@ function createAtomicTile(sequenceId, atomIndex, atomSymbol) {
     symbol: atomSymbol
   };
 }
-function getTileAtomPattern(tile, config) {
-  const length = tile.end - tile.start + 1;
-  if (length <= 0) {
-    return [];
-  }
-  const pattern = config.atoms.slice(tile.start, tile.end + 1);
-  if (pattern.length !== length) {
-    return [];
-  }
-  return pattern;
+function normalizeConfig(config) {
+  return {
+    ...config,
+    relations: normalizeRelations(config.relations),
+    allowReverseMerge: config.allowReverseMerge === true
+  };
 }
-function findMatchingIntervals(tile, config) {
-  const pattern = getTileAtomPattern(tile, config);
-  if (!pattern.length) {
+function findMatchingIntervalsBySymbol(tileSymbol, config) {
+  if (tileSymbol.length === 0) {
     return [];
   }
   const intervals = [];
-  const maxStart = config.atoms.length - pattern.length;
-  for (let start = 0;start <= maxStart; start += 1) {
-    let matched = true;
-    for (let offset = 0;offset < pattern.length; offset += 1) {
-      if (config.atoms[start + offset] !== pattern[offset]) {
-        matched = false;
+  for (let start = 0;start < config.atoms.length; start += 1) {
+    let combined = "";
+    for (let end = start;end < config.atoms.length; end += 1) {
+      combined += config.atoms[end] ?? "";
+      if (!tileSymbol.startsWith(combined)) {
         break;
       }
-    }
-    if (matched) {
-      intervals.push({
-        start,
-        end: start + pattern.length - 1
-      });
+      if (combined === tileSymbol) {
+        intervals.push({ start, end });
+        break;
+      }
     }
   }
   return intervals;
 }
-function buildMergePlan(first, second, config, allowReverseMerge) {
-  const firstMatches = findMatchingIntervals(first, config);
-  const secondMatches = findMatchingIntervals(second, config);
-  for (const firstInterval of firstMatches) {
-    for (const secondInterval of secondMatches) {
-      if (firstInterval.end + 1 === secondInterval.start) {
-        return {
-          orderedFirst: first,
-          orderedSecond: second,
-          start: firstInterval.start,
-          end: secondInterval.end
-        };
+function resolveMergeContext(first, second, configMap, dir) {
+  const axis = dir ? getAxisByDirection(dir) : null;
+  for (const rawConfig of configMap.values()) {
+    const config = normalizeConfig(rawConfig);
+    if (axis && !config.relations.includes(axis)) {
+      continue;
+    }
+    const firstMatches = findMatchingIntervalsBySymbol(first.symbol, config);
+    if (!firstMatches.length) {
+      continue;
+    }
+    const secondMatches = findMatchingIntervalsBySymbol(second.symbol, config);
+    if (!secondMatches.length) {
+      continue;
+    }
+    for (const firstInterval of firstMatches) {
+      for (const secondInterval of secondMatches) {
+        if (firstInterval.end + 1 === secondInterval.start) {
+          const start = firstInterval.start;
+          const end = secondInterval.end;
+          return {
+            config,
+            orderedFirst: first,
+            orderedSecond: second,
+            start,
+            end,
+            completed: start === 0 && end === config.atoms.length - 1
+          };
+        }
       }
     }
-  }
-  if (!allowReverseMerge) {
-    return null;
-  }
-  for (const firstInterval of firstMatches) {
-    for (const secondInterval of secondMatches) {
-      if (secondInterval.end + 1 === firstInterval.start) {
-        return {
-          orderedFirst: second,
-          orderedSecond: first,
-          start: secondInterval.start,
-          end: firstInterval.end
-        };
+    if (!config.allowReverseMerge) {
+      continue;
+    }
+    for (const firstInterval of firstMatches) {
+      for (const secondInterval of secondMatches) {
+        if (secondInterval.end + 1 === firstInterval.start) {
+          const start = secondInterval.start;
+          const end = firstInterval.end;
+          return {
+            config,
+            orderedFirst: second,
+            orderedSecond: first,
+            start,
+            end,
+            completed: start === 0 && end === config.atoms.length - 1
+          };
+        }
       }
     }
   }
@@ -231,20 +244,9 @@ function canMergeTiles(first, second, dir, configMap) {
   if (firstIsFinal && secondIsFinal) {
     return true;
   }
-  if (first.sequenceId !== second.sequenceId) {
-    return false;
-  }
-  const config = configMap.get(first.sequenceId);
-  if (!config) {
-    return false;
-  }
-  const relations = normalizeRelations(config.relations);
-  if (!relations.includes(getAxisByDirection(dir))) {
-    return false;
-  }
-  return buildMergePlan(first, second, config, config.allowReverseMerge === true) !== null;
+  return resolveMergeContext(first, second, configMap, dir) !== null;
 }
-function mergeTiles(first, second, configMap) {
+function mergeTiles(first, second, configMap, dir) {
   const firstIsFinal = isFinalTile(first, configMap);
   const secondIsFinal = isFinalTile(second, configMap);
   if (firstIsFinal && secondIsFinal) {
@@ -253,34 +255,21 @@ function mergeTiles(first, second, configMap) {
       removeSecond: true
     };
   }
-  if (first.sequenceId !== second.sequenceId) {
-    throw new Error("Cannot merge tiles from different sequenceId");
-  }
-  const config = configMap.get(first.sequenceId);
-  if (!config) {
-    throw new Error(`Unknown sequence id: ${first.sequenceId}`);
-  }
-  const normalizedConfig = {
-    ...config,
-    relations: normalizeRelations(config.relations),
-    allowReverseMerge: config.allowReverseMerge === true
-  };
-  const mergePlan = buildMergePlan(first, second, normalizedConfig, normalizedConfig.allowReverseMerge);
-  if (!mergePlan) {
+  const mergeContext = resolveMergeContext(first, second, configMap, dir);
+  if (!mergeContext) {
     throw new Error("Cannot merge non-continuous intervals");
   }
-  const { orderedFirst, orderedSecond, start, end } = mergePlan;
-  const resultTile = createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
-  const completed = start === 0 && end === normalizedConfig.atoms.length - 1;
+  const { config, orderedFirst, orderedSecond, start, end, completed } = mergeContext;
+  const resultTile = createRangeTile(config, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
   if (completed) {
     return {
       removeFirst: false,
       removeSecond: true,
       resultTile,
-      completedSequenceId: normalizedConfig.id,
+      completedSequenceId: config.id,
       rewardEvent: {
-        sequenceId: normalizedConfig.id,
-        reward: normalizedConfig.reward
+        sequenceId: config.id,
+        reward: config.reward
       }
     };
   }
@@ -346,7 +335,7 @@ function resolveConflicts(candidates, _dir) {
   }
   return selected;
 }
-function applyMerges(board, selected, configMap) {
+function applyMerges(board, selected, dir, configMap) {
   const nextBoard = cloneBoard(board);
   const events = [];
   const rewards = [];
@@ -362,7 +351,7 @@ function applyMerges(board, selected, configMap) {
     if (first.id !== candidate.firstTileId || second.id !== candidate.secondTileId) {
       continue;
     }
-    const merged = mergeTiles(first, second, configMap);
+    const merged = mergeTiles(first, second, configMap, dir);
     changed = true;
     if (merged.removeSecond) {
       nextBoard[r2][c2] = null;
@@ -433,7 +422,7 @@ function step(board, dir, configs, spawnPolicy) {
   const firstSlide = slideBoard(board, dir);
   const candidates = findMergeCandidates(firstSlide.board, dir, configMap);
   const selected = resolveConflicts(candidates, dir);
-  const mergeResult = applyMerges(firstSlide.board, selected, configMap);
+  const mergeResult = applyMerges(firstSlide.board, selected, dir, configMap);
   const secondSlide = slideBoard(mergeResult.board, dir);
   let nextBoard = secondSlide.board;
   const events = [...firstSlide.events, ...mergeResult.events, ...secondSlide.events];
@@ -479,6 +468,31 @@ var STATUS_TEXT = {
 var GAME_OVER_TEXT = STATUS_TEXT.gameOver;
 var RETRY_TEXT = ElPsyCongroo([30003, 35831, 20854, 20182, 23548, 24072]);
 var StrategicRatio = { p: 7, q: 8 };
+var BEST_SCORE_STORAGE_KEY = "sequence-grid.best-score.v1";
+
+// src/ui/best-score.ts
+function sanitizeScore(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(value));
+}
+function loadBestScore() {
+  try {
+    const raw = window.localStorage.getItem(BEST_SCORE_STORAGE_KEY);
+    if (!raw) {
+      return 0;
+    }
+    return sanitizeScore(Number(raw));
+  } catch {
+    return 0;
+  }
+}
+function saveBestScore(score) {
+  try {
+    window.localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(sanitizeScore(score)));
+  } catch {}
+}
 
 // src/ui/deadlock.ts
 function samePosition2(a, b) {
@@ -593,6 +607,7 @@ function requireElement(selector) {
 function mountUi() {
   const boardElement = requireElement("#board");
   const scoreElement = requireElement("#score");
+  const bestScoreElement = requireElement("#best-score");
   const movesElement = requireElement("#moves");
   const statusElement = requireElement("#status");
   const eventsElement = requireElement("#events");
@@ -614,6 +629,7 @@ function mountUi() {
   return {
     boardElement,
     scoreElement,
+    bestScoreElement,
     movesElement,
     statusElement,
     eventsElement,
@@ -639,20 +655,7 @@ function getBoardColumnCount(board) {
 }
 function computeTileFontSize(tile) {
   const glyphCount = Math.max(1, Array.from(tile.symbol).length);
-  if (glyphCount <= 6) {
-    return 24;
-  }
-  if (glyphCount <= 12) {
-    return 23;
-  }
-  if (glyphCount <= 18) {
-    return 22;
-  }
-  if (glyphCount <= 25) {
-    return 21;
-  }
-  const overflow = glyphCount - 25;
-  const size = 21 - Math.ceil(overflow / 8);
+  const size = -2 / 5 * glyphCount + 25;
   return Math.max(12, size);
 }
 function formatEvent(event) {
@@ -709,6 +712,7 @@ function renderCompletedCounts(completedCountsElement, completedCounts, configs)
 }
 function render(ui, state, configs) {
   ui.scoreElement.textContent = String(state.score);
+  ui.bestScoreElement.textContent = String(state.bestScore);
   ui.movesElement.textContent = String(state.moves);
   ui.statusElement.textContent = state.status;
   ui.eventsElement.textContent = state.eventLines.join(`
@@ -718,10 +722,10 @@ function render(ui, state, configs) {
   updateGameOverUI(ui, state.gameOver);
 }
 
-// src/ui/sequences.ts
-var seq = ({
-  id,
-  atoms = id.replace(/[，|。|？|！]/g, "").split(""),
+// src/ui/seq.ts
+var group = ({
+  atoms,
+  id = atoms.join(""),
   relations = ["H", "V"],
   allowReverseMerge = true,
   score = 100
@@ -732,16 +736,28 @@ var seq = ({
   relations,
   allowReverseMerge
 });
+
+// src/ui/seq-data.ts
 var configs = [
-  seq({ id: "這種成績，使人汗顏！如此成績，如何招生？" }),
-  seq({ id: "不照規則，不會拿到求真書院的學位！", atoms: ["不照規則，", "不會拿到求真書院的學位！"] }),
-  {
-    id: "求真子弟，必须尋天人樂處，拓万古心胸。",
-    atoms: ["求真子弟", "必须尋天人樂處", "拓万古心胸"],
-    reward: { score: 100 },
-    relations: ["H", "V"],
-    allowReverseMerge: true
-  }
+  ...[
+    ["代数", "儿何"],
+    ["这是一个", "下等的論文"],
+    ["已經到了", "無恥的地步"],
+    ["從頭到尾，", "秘密行動"],
+    ["朋比为奸", "！"],
+    ["居心叵测", "！"],
+    ["有没有", "利益輸送", "？"],
+    ["要求不會改變", "！"],
+    ["羞之", "羞之", "！"],
+    ["獎一个", "华为手表"],
+    ["這種成績，", "使人汗顏！", "如此成績，", "如何招生", "？"],
+    ["何其斤斤计较於", "一餐之饱食"],
+    ["尋天人樂處，", "拓万古心胸。"],
+    ["我們学生躲在遊戲屋，", "不觉得羞愧, ", "？"],
+    ["大家可以討論，", "正如小孩子們喜歡吃零食，", "不願意吃正餐一樣。"],
+    ["花點時間去挑戰數学有趣的難題，", "不再討論這件事情了"],
+    ["躲在家中", "玩耍游戏，", "置一流学問於不顾", "！"]
+  ].map((s) => group({ atoms: s }))
 ];
 
 // src/ui/spawn-policy.ts
@@ -870,10 +886,11 @@ function createInitialCompletedCounts(configs2) {
   }
   return counts;
 }
-function createInitialState(configs2) {
+function createInitialState(configs2, bestScore = 0) {
   return {
     board: createEmptyBoard(BOARD_ROWS, BOARD_COLS),
     score: 0,
+    bestScore,
     moves: 0,
     status: STATUS_TEXT.ready,
     eventLines: [],
@@ -888,7 +905,7 @@ var atomIndex = buildAtomIndex(configs);
 var atomPool = listAtomDefinitions(configs);
 var configMap = buildConfigMap(configs);
 var spawnPolicy = createStrategicSpawnPolicy(atomPool, configMap);
-var state = createInitialState(configs);
+var state = createInitialState(configs, loadBestScore());
 function placeSpawn(board, spawn) {
   const next = board.map((row2) => row2.slice());
   const [row, col] = spawn.position;
@@ -896,9 +913,10 @@ function placeSpawn(board, spawn) {
   return next;
 }
 function resetState() {
-  const next = createInitialState(configs);
+  const next = createInitialState(configs, state.bestScore);
   state.board = next.board;
   state.score = next.score;
+  state.bestScore = next.bestScore;
   state.moves = next.moves;
   state.status = next.status;
   state.eventLines = next.eventLines;
@@ -931,6 +949,13 @@ function updateGameOverState(board) {
     state.status = STATUS_TEXT.gameOver;
   }
 }
+function syncBestScore() {
+  if (state.score <= state.bestScore) {
+    return;
+  }
+  state.bestScore = state.score;
+  saveBestScore(state.bestScore);
+}
 function setStatusAfterMove(scoreDelta) {
   if (state.gameOver) {
     return;
@@ -954,6 +979,7 @@ function executeMove(direction) {
   state.moves += 1;
   const scoreDelta = result.rewards.reduce((acc, reward) => acc + (reward.reward?.score ?? 0), 0);
   state.score += scoreDelta;
+  syncBestScore();
   applyCompletionCounts(result.events);
   updateGameOverState(state.board);
   setStatusAfterMove(scoreDelta);

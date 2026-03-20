@@ -14,25 +14,7 @@ function getBoardColumnCount(board: Board): number {
 
 function computeTileFontSize(tile: Tile): number {
   const glyphCount = Math.max(1, Array.from(tile.symbol).length);
-
-  if (glyphCount <= 6) {
-    return 24;
-  }
-
-  if (glyphCount <= 12) {
-    return 23;
-  }
-
-  if (glyphCount <= 18) {
-    return 22;
-  }
-
-  if (glyphCount <= 25) {
-    return 21;
-  }
-
-  const overflow = glyphCount - 25;
-  const size = 21 - Math.ceil(overflow / 8);
+  const size = (-2 / 5) * glyphCount + 25;
   return Math.max(12, size);
 }
 
@@ -106,6 +88,7 @@ function renderCompletedCounts(
 
 export function render(ui: UiElements, state: GameState, configs: SequenceConfig[]): void {
   ui.scoreElement.textContent = String(state.score);
+  ui.bestScoreElement.textContent = String(state.bestScore);
   ui.movesElement.textContent = String(state.moves);
   ui.statusElement.textContent = state.status;
   ui.eventsElement.textContent = state.eventLines.join("\n");

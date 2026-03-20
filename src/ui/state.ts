@@ -4,6 +4,7 @@ import { BOARD_COLS, BOARD_ROWS, STATUS_TEXT } from "./constants";
 export type GameState = {
   board: Board;
   score: number;
+  bestScore: number;
   moves: number;
   status: string;
   eventLines: string[];
@@ -19,10 +20,11 @@ export function createInitialCompletedCounts(configs: SequenceConfig[]): Record<
   return counts;
 }
 
-export function createInitialState(configs: SequenceConfig[]): GameState {
+export function createInitialState(configs: SequenceConfig[], bestScore = 0): GameState {
   return {
     board: createEmptyBoard(BOARD_ROWS, BOARD_COLS),
     score: 0,
+    bestScore,
     moves: 0,
     status: STATUS_TEXT.ready,
     eventLines: [],

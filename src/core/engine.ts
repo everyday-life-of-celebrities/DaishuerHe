@@ -140,12 +140,15 @@ type SequenceInterval = {
   end: number;
 };
 
-type MergePlan = {
+type ResolvedMergeContext = {
+  config: NormalizedSequenceConfig;
   orderedFirst: Tile;
   orderedSecond: Tile;
   start: number;
   end: number;
+  completed: boolean;
 };
+
 type MergeTilesResult = {
   removeFirst: boolean;
   removeSecond: boolean;
@@ -153,7 +156,6 @@ type MergeTilesResult = {
   rewardEvent?: RewardEvent;
   completedSequenceId?: string;
 };
-
 export function createAtomicTile(sequenceId: string, atomIndex: number, atomSymbol: string): Tile {
   return {
     id: nextTileId(),
@@ -163,90 +165,106 @@ export function createAtomicTile(sequenceId: string, atomIndex: number, atomSymb
     symbol: atomSymbol
   };
 }
-function getTileAtomPattern(tile: Tile, config: SequenceConfig): string[] {
-  const length = tile.end - tile.start + 1;
-  if (length <= 0) {
-    return [];
-  }
-
-  const pattern = config.atoms.slice(tile.start, tile.end + 1);
-  if (pattern.length !== length) {
-    return [];
-  }
-
-  return pattern;
+function normalizeConfig(config: SequenceConfig): NormalizedSequenceConfig {
+  return {
+    ...config,
+    relations: normalizeRelations(config.relations),
+    allowReverseMerge: config.allowReverseMerge === true
+  };
 }
 
-function findMatchingIntervals(tile: Tile, config: SequenceConfig): SequenceInterval[] {
-  const pattern = getTileAtomPattern(tile, config);
-  if (!pattern.length) {
+function findMatchingIntervalsBySymbol(tileSymbol: string, config: NormalizedSequenceConfig): SequenceInterval[] {
+  if (tileSymbol.length === 0) {
     return [];
   }
 
   const intervals: SequenceInterval[] = [];
-  const maxStart = config.atoms.length - pattern.length;
-  for (let start = 0; start <= maxStart; start += 1) {
-    let matched = true;
-    for (let offset = 0; offset < pattern.length; offset += 1) {
-      if (config.atoms[start + offset] !== pattern[offset]) {
-        matched = false;
+
+  for (let start = 0; start < config.atoms.length; start += 1) {
+    let combined = "";
+
+    for (let end = start; end < config.atoms.length; end += 1) {
+      combined += config.atoms[end] ?? "";
+
+      if (!tileSymbol.startsWith(combined)) {
         break;
       }
-    }
 
-    if (matched) {
-      intervals.push({
-        start,
-        end: start + pattern.length - 1
-      });
+      if (combined === tileSymbol) {
+        intervals.push({ start, end });
+        break;
+      }
     }
   }
 
   return intervals;
 }
 
-function buildMergePlan(
+function resolveMergeContext(
   first: Tile,
   second: Tile,
-  config: SequenceConfig,
-  allowReverseMerge: boolean
-): MergePlan | null {
-  const firstMatches = findMatchingIntervals(first, config);
-  const secondMatches = findMatchingIntervals(second, config);
+  configMap: Map<string, SequenceConfig>,
+  dir?: MoveDirection
+): ResolvedMergeContext | null {
+  const axis = dir ? getAxisByDirection(dir) : null;
 
-  for (const firstInterval of firstMatches) {
-    for (const secondInterval of secondMatches) {
-      if (firstInterval.end + 1 === secondInterval.start) {
-        return {
-          orderedFirst: first,
-          orderedSecond: second,
-          start: firstInterval.start,
-          end: secondInterval.end
-        };
+  for (const rawConfig of configMap.values()) {
+    const config = normalizeConfig(rawConfig);
+    if (axis && !config.relations.includes(axis)) {
+      continue;
+    }
+
+    const firstMatches = findMatchingIntervalsBySymbol(first.symbol, config);
+    if (!firstMatches.length) {
+      continue;
+    }
+
+    const secondMatches = findMatchingIntervalsBySymbol(second.symbol, config);
+    if (!secondMatches.length) {
+      continue;
+    }
+
+    for (const firstInterval of firstMatches) {
+      for (const secondInterval of secondMatches) {
+        if (firstInterval.end + 1 === secondInterval.start) {
+          const start = firstInterval.start;
+          const end = secondInterval.end;
+          return {
+            config,
+            orderedFirst: first,
+            orderedSecond: second,
+            start,
+            end,
+            completed: start === 0 && end === config.atoms.length - 1
+          };
+        }
       }
     }
-  }
 
-  if (!allowReverseMerge) {
-    return null;
-  }
+    if (!config.allowReverseMerge) {
+      continue;
+    }
 
-  for (const firstInterval of firstMatches) {
-    for (const secondInterval of secondMatches) {
-      if (secondInterval.end + 1 === firstInterval.start) {
-        return {
-          orderedFirst: second,
-          orderedSecond: first,
-          start: secondInterval.start,
-          end: firstInterval.end
-        };
+    for (const firstInterval of firstMatches) {
+      for (const secondInterval of secondMatches) {
+        if (secondInterval.end + 1 === firstInterval.start) {
+          const start = secondInterval.start;
+          const end = firstInterval.end;
+          return {
+            config,
+            orderedFirst: second,
+            orderedSecond: first,
+            start,
+            end,
+            completed: start === 0 && end === config.atoms.length - 1
+          };
+        }
       }
     }
   }
 
   return null;
 }
-
 function createRangeTile(config: NormalizedSequenceConfig, start: number, end: number, symbol?: string): Tile {
   return {
     id: nextTileId(),
@@ -339,27 +357,13 @@ export function canMergeTiles(
     return true;
   }
 
-  if (first.sequenceId !== second.sequenceId) {
-    return false;
-  }
-
-  const config = configMap.get(first.sequenceId);
-  if (!config) {
-    return false;
-  }
-
-  const relations = normalizeRelations(config.relations);
-  if (!relations.includes(getAxisByDirection(dir))) {
-    return false;
-  }
-
-  return buildMergePlan(first, second, config, config.allowReverseMerge === true) !== null;
+  return resolveMergeContext(first, second, configMap, dir) !== null;
 }
-
 export function mergeTiles(
   first: Tile,
   second: Tile,
-  configMap: Map<string, SequenceConfig>
+  configMap: Map<string, SequenceConfig>,
+  dir?: MoveDirection
 ): MergeTilesResult {
   const firstIsFinal = isFinalTile(first, configMap);
   const secondIsFinal = isFinalTile(second, configMap);
@@ -370,39 +374,23 @@ export function mergeTiles(
     };
   }
 
-  if (first.sequenceId !== second.sequenceId) {
-    throw new Error("Cannot merge tiles from different sequenceId");
-  }
-
-  const config = configMap.get(first.sequenceId);
-  if (!config) {
-    throw new Error(`Unknown sequence id: ${first.sequenceId}`);
-  }
-
-  const normalizedConfig: NormalizedSequenceConfig = {
-    ...config,
-    relations: normalizeRelations(config.relations),
-    allowReverseMerge: config.allowReverseMerge === true
-  };
-
-  const mergePlan = buildMergePlan(first, second, normalizedConfig, normalizedConfig.allowReverseMerge);
-  if (!mergePlan) {
+  const mergeContext = resolveMergeContext(first, second, configMap, dir);
+  if (!mergeContext) {
     throw new Error("Cannot merge non-continuous intervals");
   }
 
-  const { orderedFirst, orderedSecond, start, end } = mergePlan;
-  const resultTile = createRangeTile(normalizedConfig, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
-  const completed = start === 0 && end === normalizedConfig.atoms.length - 1;
+  const { config, orderedFirst, orderedSecond, start, end, completed } = mergeContext;
+  const resultTile = createRangeTile(config, start, end, `${orderedFirst.symbol}${orderedSecond.symbol}`);
 
   if (completed) {
     return {
       removeFirst: false,
       removeSecond: true,
       resultTile,
-      completedSequenceId: normalizedConfig.id,
+      completedSequenceId: config.id,
       rewardEvent: {
-        sequenceId: normalizedConfig.id,
-        reward: normalizedConfig.reward
+        sequenceId: config.id,
+        reward: config.reward
       }
     };
   }
@@ -413,7 +401,6 @@ export function mergeTiles(
     resultTile
   };
 }
-
 export function findMergeCandidates(
   board: Board,
   dir: MoveDirection,
@@ -491,6 +478,7 @@ export function resolveConflicts(candidates: Candidate[], _dir: MoveDirection): 
 export function applyMerges(
   board: Board,
   selected: Candidate[],
+  dir: MoveDirection,
   configMap: Map<string, SequenceConfig>
 ): {
   board: Board;
@@ -517,7 +505,7 @@ export function applyMerges(
       continue;
     }
 
-    const merged = mergeTiles(first, second, configMap);
+    const merged = mergeTiles(first, second, configMap, dir);
     changed = true;
 
     if (merged.removeSecond) {
@@ -607,7 +595,7 @@ export function step(
   const firstSlide = slideBoard(board, dir);
   const candidates = findMergeCandidates(firstSlide.board, dir, configMap);
   const selected = resolveConflicts(candidates, dir);
-  const mergeResult = applyMerges(firstSlide.board, selected, configMap);
+  const mergeResult = applyMerges(firstSlide.board, selected, dir, configMap);
   const secondSlide = slideBoard(mergeResult.board, dir);
 
   let nextBoard = secondSlide.board;

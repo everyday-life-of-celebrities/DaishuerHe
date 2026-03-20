@@ -1,6 +1,6 @@
 import type { MoveDirection } from "../core";
 
-export const ElPsyCongroo = (xs: number[]) => xs.map(c => String.fromCharCode(c)).join("")
+export const ElPsyCongroo = (xs: number[]) => xs.map((c) => String.fromCharCode(c)).join("");
 export const BOARD_ROWS = 4;
 export const BOARD_COLS = 4;
 
@@ -19,5 +19,6 @@ export const RETRY_TEXT = ElPsyCongroo([30003, 35831, 20854, 20182, 23548, 24072
 /**
  * shouldUseStrategic := n * q >= N * p
  */
-export const StrategicRatio = { p: 7, q: 8 }
+export const StrategicRatio = { p: 7, q: 8 };
 
+export const BEST_SCORE_STORAGE_KEY = "sequence-grid.best-score.v1";
