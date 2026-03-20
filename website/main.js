@@ -5,8 +5,11 @@ function nextTileId() {
   tileIdCounter += 1;
   return id;
 }
-function createEmptyBoard(size) {
-  return Array.from({ length: size }, () => Array.from({ length: size }, () => null));
+function createEmptyBoard(rows, cols = rows) {
+  if (rows <= 0 || cols <= 0) {
+    throw new Error("Board dimensions must be positive");
+  }
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => null));
 }
 function cloneBoard(board) {
   return board.map((row) => row.slice());
@@ -46,38 +49,46 @@ function getAxisByDirection(dir) {
 function samePosition(a, b) {
   return a[0] === b[0] && a[1] === b[1];
 }
-function getLinePositions(size, dir, line) {
+function getLinePositions(rowCount, colCount, dir, line) {
   const positions = [];
   if (dir === "Left") {
-    for (let col = 0;col < size; col += 1) {
+    for (let col = 0;col < colCount; col += 1) {
       positions.push([line, col]);
     }
     return positions;
   }
   if (dir === "Right") {
-    for (let col = size - 1;col >= 0; col -= 1) {
+    for (let col = colCount - 1;col >= 0; col -= 1) {
       positions.push([line, col]);
     }
     return positions;
   }
   if (dir === "Up") {
-    for (let row = 0;row < size; row += 1) {
+    for (let row = 0;row < rowCount; row += 1) {
       positions.push([row, line]);
     }
     return positions;
   }
-  for (let row = size - 1;row >= 0; row -= 1) {
+  for (let row = rowCount - 1;row >= 0; row -= 1) {
     positions.push([row, line]);
   }
   return positions;
 }
-function assertSquareBoard(board) {
-  const size = board.length;
+function assertRectangularBoard(board) {
+  const rowCount = board.length;
+  if (rowCount <= 0) {
+    throw new Error("Board must have at least one row");
+  }
+  const colCount = board[0]?.length ?? 0;
+  if (colCount <= 0) {
+    throw new Error("Board must have at least one column");
+  }
   for (const row of board) {
-    if (row.length !== size) {
-      throw new Error("Board must be N x N");
+    if (row.length !== colCount) {
+      throw new Error("Board rows must have equal length");
     }
   }
+  return { rowCount, colCount };
 }
 function createAtomicTile(sequenceId, atomIndex, atomSymbol) {
   return {
@@ -165,13 +176,13 @@ function createRangeTile(config, start, end, symbol) {
   };
 }
 function slideBoard(board, dir) {
-  assertSquareBoard(board);
-  const size = board.length;
-  const nextBoard = createEmptyBoard(size);
+  const { rowCount, colCount } = assertRectangularBoard(board);
+  const lineCount = dir === "Left" || dir === "Right" ? rowCount : colCount;
+  const nextBoard = createEmptyBoard(rowCount, colCount);
   const events = [];
   let changed = false;
-  for (let line = 0;line < size; line += 1) {
-    const orderedPositions = getLinePositions(size, dir, line);
+  for (let line = 0;line < lineCount; line += 1) {
+    const orderedPositions = getLinePositions(rowCount, colCount, dir, line);
     const packedTiles = [];
     for (const pos of orderedPositions) {
       const tile = board[pos[0]][pos[1]];
@@ -248,13 +259,12 @@ function mergeTiles(first, second, configMap) {
   };
 }
 function findMergeCandidates(board, dir, configMap) {
-  assertSquareBoard(board);
-  const size = board.length;
+  const { rowCount, colCount } = assertRectangularBoard(board);
   const axis = getAxisByDirection(dir);
   const candidates = [];
   if (axis === "H") {
-    for (let row = 0;row < size; row += 1) {
-      for (let col = 0;col < size - 1; col += 1) {
+    for (let row = 0;row < rowCount; row += 1) {
+      for (let col = 0;col < colCount - 1; col += 1) {
         const first = board[row][col];
         const second = board[row][col + 1];
         if (!first || !second) {
@@ -272,8 +282,8 @@ function findMergeCandidates(board, dir, configMap) {
     }
     return candidates;
   }
-  for (let col = 0;col < size; col += 1) {
-    for (let row = 0;row < size - 1; row += 1) {
+  for (let col = 0;col < colCount; col += 1) {
+    for (let row = 0;row < rowCount - 1; row += 1) {
       const first = board[row][col];
       const second = board[row + 1][col];
       if (!first || !second) {
@@ -357,7 +367,11 @@ function applyMerges(board, selected, configMap) {
   };
 }
 function isInsideBoard(board, row, col) {
-  return row >= 0 && col >= 0 && row < board.length && col < board.length;
+  if (row < 0 || col < 0 || row >= board.length) {
+    return false;
+  }
+  const colCount = board[0]?.length ?? 0;
+  return col < colCount;
 }
 function buildAtomIndex(configs) {
   const index = new Map;
@@ -423,16 +437,25 @@ function step(board, dir, configs, spawnPolicy) {
   };
 }
 // src/ui/main.ts
-var BOARD_SIZE = 4;
+var BOARD_COLS = 4;
+var BOARD_ROWS = 4;
 var DIRECTIONS = ["Left", "Right", "Up", "Down"];
+var seq = ({
+  id,
+  atoms = id.replace(/[，|。|？|！]/g, "").split(""),
+  relations = ["H", "V"],
+  allowReverseMerge = true,
+  score = 100
+}) => ({
+  id,
+  atoms,
+  reward: { score },
+  relations,
+  allowReverseMerge
+});
 var configs = [
-  {
-    id: "姚姚领先",
-    atoms: "姚姚领先".split(""),
-    reward: { score: 100 },
-    relations: ["H", "V"],
-    allowReverseMerge: true
-  }
+  seq({ id: "代数儿何" }),
+  seq({ id: "這種成績，使人汗顏！如此成績，如何招生？" })
 ];
 var boardElement = document.querySelector("#board");
 var scoreElement = document.querySelector("#score");
@@ -446,6 +469,7 @@ if (!boardElement || !scoreElement || !movesElement || !statusElement || !events
 }
 var atomIndex = buildAtomIndex(configs);
 var atomPool = listAtomDefinitions(configs);
+var configMap = buildConfigMap(configs);
 function createInitialCompletedCounts() {
   const counts = {};
   for (const config of configs) {
@@ -454,7 +478,7 @@ function createInitialCompletedCounts() {
   return counts;
 }
 var state = {
-  board: createEmptyBoard(BOARD_SIZE),
+  board: createEmptyBoard(BOARD_ROWS, BOARD_COLS),
   score: 0,
   moves: 0,
   status: "Use arrow keys or buttons to move.",
@@ -467,10 +491,60 @@ function randInt(maxExclusive) {
 function randomFrom(items) {
   return items[randInt(items.length)];
 }
-function randomSpawnPolicy(req) {
+function getTileAt(board, row, col) {
+  if (row < 0 || row >= board.length || col < 0) {
+    return null;
+  }
+  if (col >= board[row].length) {
+    return null;
+  }
+  return board[row][col];
+}
+function scoreSpawnCandidate(board, row, col, atom) {
+  const previewTile = {
+    id: -1,
+    sequenceId: atom.sequenceId,
+    start: atom.atomIndex,
+    end: atom.atomIndex,
+    symbol: atom.atomSymbol
+  };
+  const left = getTileAt(board, row, col - 1);
+  const right = getTileAt(board, row, col + 1);
+  const up = getTileAt(board, row - 1, col);
+  const down = getTileAt(board, row + 1, col);
+  let score = 0;
+  if (left && canMergeTiles(left, previewTile, "Left", configMap)) {
+    score += 14;
+  }
+  if (right && canMergeTiles(previewTile, right, "Left", configMap)) {
+    score += 14;
+  }
+  if (up && canMergeTiles(up, previewTile, "Up", configMap)) {
+    score += 14;
+  }
+  if (down && canMergeTiles(previewTile, down, "Up", configMap)) {
+    score += 14;
+  }
+  const neighbors = [left, right, up, down];
+  for (const neighbor of neighbors) {
+    if (!neighbor) {
+      score += 0.25;
+      continue;
+    }
+    if (neighbor.sequenceId === previewTile.sequenceId) {
+      score += 2;
+      score += Math.min(3, (neighbor.end - neighbor.start + 1) * 0.6);
+    }
+  }
+  if (atom.atomIndex === 0) {
+    score += 0.75;
+  }
+  return score;
+}
+function strategicSpawnPolicy(req) {
   const empties = [];
   for (let row = 0;row < req.board.length; row += 1) {
-    for (let col = 0;col < req.board.length; col += 1) {
+    for (let col = 0;col < req.board[row].length; col += 1) {
       if (req.board[row][col] === null) {
         empties.push([row, col]);
       }
@@ -479,11 +553,48 @@ function randomSpawnPolicy(req) {
   if (!empties.length || !atomPool.length) {
     return null;
   }
-  const position = randomFrom(empties);
-  const atom = randomFrom(atomPool);
+  const rowCount = req.board.length;
+  const colCount = req.board[0]?.length ?? 0;
+  const totalCells = rowCount * colCount;
+  const occupiedCells = totalCells - empties.length;
+  const shouldUseStrategic = totalCells > 0 && occupiedCells * 4 >= totalCells * 3;
+  if (!shouldUseStrategic) {
+    const randomPosition = randomFrom(empties);
+    const randomAtom = randomFrom(atomPool);
+    return {
+      position: randomPosition,
+      tile: createAtomicTile(randomAtom.sequenceId, randomAtom.atomIndex, randomAtom.atomSymbol)
+    };
+  }
+  let bestScore = Number.NEGATIVE_INFINITY;
+  const bestCandidates = [];
+  for (const position of empties) {
+    const [row, col] = position;
+    for (const atom of atomPool) {
+      const score = scoreSpawnCandidate(req.board, row, col, atom);
+      if (score > bestScore) {
+        bestScore = score;
+        bestCandidates.length = 0;
+        bestCandidates.push({ position, atom });
+        continue;
+      }
+      if (score === bestScore) {
+        bestCandidates.push({ position, atom });
+      }
+    }
+  }
+  if (bestScore <= 0 || !bestCandidates.length) {
+    const fallbackPosition = randomFrom(empties);
+    const fallbackAtom = randomFrom(atomPool);
+    return {
+      position: fallbackPosition,
+      tile: createAtomicTile(fallbackAtom.sequenceId, fallbackAtom.atomIndex, fallbackAtom.atomSymbol)
+    };
+  }
+  const selected = randomFrom(bestCandidates);
   return {
-    position,
-    tile: createAtomicTile(atom.sequenceId, atom.atomIndex, atom.atomSymbol)
+    position: selected.position,
+    tile: createAtomicTile(selected.atom.sequenceId, selected.atom.atomIndex, selected.atom.atomSymbol)
   };
 }
 function placeSpawn(board, spawn) {
@@ -493,14 +604,14 @@ function placeSpawn(board, spawn) {
   return next;
 }
 function seedBoard() {
-  state.board = createEmptyBoard(BOARD_SIZE);
+  state.board = createEmptyBoard(BOARD_ROWS, BOARD_COLS);
   state.score = 0;
   state.moves = 0;
   state.eventLines = [];
   state.status = "Use arrow keys or buttons to move.";
   state.completedCounts = createInitialCompletedCounts();
   for (let i = 0;i < 2; i += 1) {
-    const spawn = randomSpawnPolicy({ board: state.board, configs });
+    const spawn = strategicSpawnPolicy({ board: state.board, configs });
     if (!spawn) {
       break;
     }
@@ -511,6 +622,27 @@ function tileClass(tile) {
   const length = tile.end - tile.start + 1;
   const level = Math.min(6, Math.max(1, length));
   return `tile tile-l${level}`;
+}
+function getBoardColumnCount(board) {
+  return board[0]?.length ?? 0;
+}
+function computeTileFontSize(tile) {
+  const glyphCount = Math.max(1, Array.from(tile.symbol).length);
+  if (glyphCount <= 6) {
+    return 24;
+  }
+  if (glyphCount <= 12) {
+    return 23;
+  }
+  if (glyphCount <= 18) {
+    return 22;
+  }
+  if (glyphCount <= 25) {
+    return 21;
+  }
+  const overflow = glyphCount - 25;
+  const size = 21 - Math.ceil(overflow / 8);
+  return Math.max(12, size);
 }
 function formatEvent(event) {
   switch (event.type) {
@@ -531,14 +663,17 @@ function formatEvent(event) {
 }
 function renderBoard(board) {
   const fragment = document.createDocumentFragment();
+  const columnCount = getBoardColumnCount(board);
+  boardElement.style.setProperty("--board-cols", String(Math.max(1, columnCount)));
   for (let row = 0;row < board.length; row += 1) {
-    for (let col = 0;col < board.length; col += 1) {
+    for (let col = 0;col < board[row].length; col += 1) {
       const cell = document.createElement("div");
       cell.className = "cell";
       const tile = board[row][col];
       if (tile) {
         const tileElement = document.createElement("div");
         tileElement.className = tileClass(tile);
+        tileElement.style.setProperty("--tile-font-size", `${computeTileFontSize(tile)}px`);
         tileElement.textContent = tile.symbol;
         cell.appendChild(tileElement);
       }
@@ -580,7 +715,7 @@ function applyCompletionCounts(events) {
   }
 }
 function executeMove(direction) {
-  const result = step(state.board, direction, configs, randomSpawnPolicy);
+  const result = step(state.board, direction, configs, strategicSpawnPolicy);
   if (!result.changed) {
     state.status = "No tiles moved.";
     render();

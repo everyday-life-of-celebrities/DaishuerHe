@@ -27,8 +27,12 @@ function nextTileId(): number {
   return id;
 }
 
-export function createEmptyBoard(size: number): Board {
-  return Array.from({ length: size }, () => Array.from({ length: size }, () => null));
+export function createEmptyBoard(rows: number, cols = rows): Board {
+  if (rows <= 0 || cols <= 0) {
+    throw new Error("Board dimensions must be positive");
+  }
+
+  return Array.from({ length: rows }, () => Array.from({ length: cols }, () => null));
 }
 
 export function cloneBoard(board: Board): Board {
@@ -80,44 +84,55 @@ function samePosition(a: Position, b: Position): boolean {
   return a[0] === b[0] && a[1] === b[1];
 }
 
-function getLinePositions(size: number, dir: MoveDirection, line: number): Position[] {
+function getLinePositions(rowCount: number, colCount: number, dir: MoveDirection, line: number): Position[] {
   const positions: Position[] = [];
 
   if (dir === "Left") {
-    for (let col = 0; col < size; col += 1) {
+    for (let col = 0; col < colCount; col += 1) {
       positions.push([line, col]);
     }
     return positions;
   }
 
   if (dir === "Right") {
-    for (let col = size - 1; col >= 0; col -= 1) {
+    for (let col = colCount - 1; col >= 0; col -= 1) {
       positions.push([line, col]);
     }
     return positions;
   }
 
   if (dir === "Up") {
-    for (let row = 0; row < size; row += 1) {
+    for (let row = 0; row < rowCount; row += 1) {
       positions.push([row, line]);
     }
     return positions;
   }
 
-  for (let row = size - 1; row >= 0; row -= 1) {
+  for (let row = rowCount - 1; row >= 0; row -= 1) {
     positions.push([row, line]);
   }
 
   return positions;
 }
 
-function assertSquareBoard(board: Board): void {
-  const size = board.length;
+function assertRectangularBoard(board: Board): { rowCount: number; colCount: number } {
+  const rowCount = board.length;
+  if (rowCount <= 0) {
+    throw new Error("Board must have at least one row");
+  }
+
+  const colCount = board[0]?.length ?? 0;
+  if (colCount <= 0) {
+    throw new Error("Board must have at least one column");
+  }
+
   for (const row of board) {
-    if (row.length !== size) {
-      throw new Error("Board must be N x N");
+    if (row.length !== colCount) {
+      throw new Error("Board rows must have equal length");
     }
   }
+
+  return { rowCount, colCount };
 }
 
 type SequenceInterval = {
@@ -245,15 +260,15 @@ export function slideBoard(
   events: MoveEvent[];
   changed: boolean;
 } {
-  assertSquareBoard(board);
+  const { rowCount, colCount } = assertRectangularBoard(board);
 
-  const size = board.length;
-  const nextBoard = createEmptyBoard(size);
+  const lineCount = dir === "Left" || dir === "Right" ? rowCount : colCount;
+  const nextBoard = createEmptyBoard(rowCount, colCount);
   const events: MoveEvent[] = [];
   let changed = false;
 
-  for (let line = 0; line < size; line += 1) {
-    const orderedPositions = getLinePositions(size, dir, line);
+  for (let line = 0; line < lineCount; line += 1) {
+    const orderedPositions = getLinePositions(rowCount, colCount, dir, line);
     const packedTiles: Array<{ tile: Tile; from: Position }> = [];
 
     for (const pos of orderedPositions) {
@@ -364,15 +379,14 @@ export function findMergeCandidates(
   dir: MoveDirection,
   configMap: Map<string, SequenceConfig>
 ): Candidate[] {
-  assertSquareBoard(board);
+  const { rowCount, colCount } = assertRectangularBoard(board);
 
-  const size = board.length;
   const axis = getAxisByDirection(dir);
   const candidates: Candidate[] = [];
 
   if (axis === "H") {
-    for (let row = 0; row < size; row += 1) {
-      for (let col = 0; col < size - 1; col += 1) {
+    for (let row = 0; row < rowCount; row += 1) {
+      for (let col = 0; col < colCount - 1; col += 1) {
         const first = board[row][col];
         const second = board[row][col + 1];
 
@@ -394,8 +408,8 @@ export function findMergeCandidates(
     return candidates;
   }
 
-  for (let col = 0; col < size; col += 1) {
-    for (let row = 0; row < size - 1; row += 1) {
+  for (let col = 0; col < colCount; col += 1) {
+    for (let row = 0; row < rowCount - 1; row += 1) {
       const first = board[row][col];
       const second = board[row + 1][col];
 
@@ -505,7 +519,12 @@ export function applyMerges(
 }
 
 function isInsideBoard(board: Board, row: number, col: number): boolean {
-  return row >= 0 && col >= 0 && row < board.length && col < board.length;
+  if (row < 0 || col < 0 || row >= board.length) {
+    return false;
+  }
+
+  const colCount = board[0]?.length ?? 0;
+  return col < colCount;
 }
 
 export function buildAtomIndex(configs: SequenceConfig[]): Map<string, AtomDefinition[]> {

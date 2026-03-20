@@ -121,7 +121,7 @@ body {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--board-cols, 4), minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -141,11 +141,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: clamp(14px, 3vw, 24px);
+  font-size: var(--tile-font-size, clamp(14px, 3vw, 24px));
   font-weight: 700;
-  letter-spacing: 0.3px;
+  letter-spacing: 0;
+  line-height: 1.08;
   padding: 4px;
   text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   animation: pop 120ms ease-out;
 }
 
