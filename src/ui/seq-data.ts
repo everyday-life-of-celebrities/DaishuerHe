@@ -3,7 +3,7 @@ import { group, seq } from "./seq";
 
 export const configs: SequenceConfig[] = [
   ...[
-    ["代数儿何"],
+    ["代数", "儿何"],
     ["这是一个", "下等的論文"],
     ["已經到了", "無恥的地步"],
     ["從頭到尾，", "秘密行動"],
