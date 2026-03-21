@@ -161,6 +161,65 @@ const KEY_TO_DIRECTION: Record<string, MoveDirection> = {
   KeyS: "Down"
 };
 
+type TouchPoint = {
+  x: number;
+  y: number;
+};
+
+const SWIPE_MIN_DISTANCE_PX = 28;
+let touchStartPoint: TouchPoint | null = null;
+
+function toSwipeDirection(start: TouchPoint, end: TouchPoint): MoveDirection | null {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_MIN_DISTANCE_PX) {
+    return null;
+  }
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? "Right" : "Left";
+  }
+
+  return dy >= 0 ? "Down" : "Up";
+}
+
+function handleTouchStart(event: TouchEvent): void {
+  if (event.touches.length !== 1) {
+    touchStartPoint = null;
+    return;
+  }
+
+  const touch = event.touches[0];
+  touchStartPoint = { x: touch.clientX, y: touch.clientY };
+}
+
+function handleTouchEnd(event: TouchEvent): void {
+  if (!touchStartPoint) {
+    return;
+  }
+
+  if (event.changedTouches.length < 1) {
+    touchStartPoint = null;
+    return;
+  }
+
+  const touch = event.changedTouches[0];
+  const direction = toSwipeDirection(touchStartPoint, { x: touch.clientX, y: touch.clientY });
+  touchStartPoint = null;
+
+  if (!direction) {
+    return;
+  }
+
+  event.preventDefault();
+  executeMove(direction);
+}
+
+function handleTouchCancel(): void {
+  touchStartPoint = null;
+}
+
 function isRestartKey(event: KeyboardEvent): boolean {
   return event.key === "n" || event.key === "N" || event.code === "KeyN";
 }
@@ -200,6 +259,10 @@ document.querySelectorAll<HTMLButtonElement>("button[data-dir]").forEach((button
     }
   });
 });
+
+ui.boardElement.addEventListener("touchstart", handleTouchStart, { passive: true });
+ui.boardElement.addEventListener("touchend", handleTouchEnd, { passive: false });
+ui.boardElement.addEventListener("touchcancel", handleTouchCancel);
 
 ui.bestScoreButton.addEventListener("click", toggleBestScoreDisplay);
 ui.restartButton.addEventListener("click", restartGame);

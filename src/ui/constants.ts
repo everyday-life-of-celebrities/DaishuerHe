@@ -7,7 +7,7 @@ export const BOARD_COLS = 4;
 export const DIRECTIONS: MoveDirection[] = ["Left", "Right", "Up", "Down"];
 
 export const STATUS_TEXT = {
-  ready: "Use arrow keys / WASD or buttons to move. Press N to restart.",
+  ready: "Use arrow keys / WASD / swipe or buttons to move. Press N to restart.",
   noMove: "No tiles moved.",
   moveApplied: "Move applied.",
   gameOver: ElPsyCongroo([25105, 23459, 24067, 20320, 24050, 32147, 19981, 26159, 25105, 30340, 23416, 29983, 20102, 33])

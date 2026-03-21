@@ -182,6 +182,7 @@ body {
   display: grid;
   grid-template-columns: repeat(var(--board-cols, 4), minmax(0, 1fr));
   gap: 10px;
+  touch-action: none;
 }
 
 .cell {
