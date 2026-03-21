@@ -91,6 +91,14 @@ function computeTileFontSize(tile: Tile, cellSize: number): number {
   return Math.max(minSize, Math.min(maxSize, computed));
 }
 
+function getDisplayedBestScore(state: GameState): number {
+  if (!state.bestScoreStats.hasSample) {
+    return 0;
+  }
+
+  return state.bestScoreDisplayMode === "highest" ? state.bestScoreStats.highest : state.bestScoreStats.lowest;
+}
+
 export function formatEvent(event: MoveEvent): string {
   switch (event.type) {
     case "slide":
@@ -166,8 +174,11 @@ function renderCompletedCounts(
 }
 
 export function render(ui: UiElements, state: GameState, configs: SequenceConfig[]): void {
+  const showingHighest = state.bestScoreDisplayMode === "highest";
+
   ui.scoreElement.textContent = String(state.score);
-  ui.bestScoreElement.textContent = String(state.bestScore);
+  ui.bestScoreLabelElement.textContent = showingHighest ? "Best" : "Worst";
+  ui.bestScoreButton.textContent = String(getDisplayedBestScore(state));
   ui.movesElement.textContent = String(state.moves);
   ui.statusElement.textContent = state.status;
   ui.eventsElement.textContent = state.eventLines.join("\n");

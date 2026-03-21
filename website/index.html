@@ -4,7 +4,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>2048 代数儿何</title>
+  <title>2048 代数儿何 v0.1.2</title>
+  <link rel="apple-touch-icon" sizes="180x180" href="./icon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./icon/favicon-16x16.png">
+  <link rel="manifest" href="./icon/site.webmanifest">
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
@@ -24,8 +28,8 @@
         <strong id="score">0</strong>
       </div>
       <div class="metric">
-        <span>Best</span>
-        <strong id="best-score">0</strong>
+        <span id="best-score-label"></span>
+        <button id="best-score" class="metric-value-button" type="button" aria-live="polite">0</button>
       </div>
       <div class="metric">
         <span>Moves</span>
@@ -44,7 +48,7 @@
       <button type="button" data-dir="Right">→</button>
     </section>
 
-    <p id="status" class="status">Use arrow keys or buttons to move.</p>
+    <p id="status" class="status">Use arrow keys / WASD or buttons to move. Press N to restart.</p>
     <pre id="events" class="events" aria-live="polite"></pre>
 
     <section class="completion-panel">

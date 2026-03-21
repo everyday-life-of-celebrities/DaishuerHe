@@ -3,7 +3,8 @@ import { GAME_OVER_TEXT, RETRY_TEXT } from "./constants";
 export type UiElements = {
   boardElement: HTMLDivElement;
   scoreElement: HTMLElement;
-  bestScoreElement: HTMLElement;
+  bestScoreLabelElement: HTMLElement;
+  bestScoreButton: HTMLButtonElement;
   movesElement: HTMLElement;
   statusElement: HTMLElement;
   eventsElement: HTMLElement;
@@ -25,7 +26,8 @@ function requireElement<T extends Element>(selector: string): T {
 export function mountUi(): UiElements {
   const boardElement = requireElement<HTMLDivElement>("#board");
   const scoreElement = requireElement<HTMLElement>("#score");
-  const bestScoreElement = requireElement<HTMLElement>("#best-score");
+  const bestScoreLabelElement = requireElement<HTMLElement>("#best-score-label");
+  const bestScoreButton = requireElement<HTMLButtonElement>("#best-score");
   const movesElement = requireElement<HTMLElement>("#moves");
   const statusElement = requireElement<HTMLElement>("#status");
   const eventsElement = requireElement<HTMLElement>("#events");
@@ -52,7 +54,8 @@ export function mountUi(): UiElements {
   return {
     boardElement,
     scoreElement,
-    bestScoreElement,
+    bestScoreLabelElement,
+    bestScoreButton,
     movesElement,
     statusElement,
     eventsElement,

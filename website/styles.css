@@ -75,8 +75,24 @@ body {
   opacity: 0.9;
 }
 
-.metric strong {
+.metric strong,
+.metric-value-button {
   font-size: 24px;
+  font-weight: 700;
+}
+
+.metric-value-button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.metric-value-button:focus-visible {
+  outline: 2px solid rgba(249, 246, 242, 0.9);
+  outline-offset: 2px;
 }
 
 .completion-panel {

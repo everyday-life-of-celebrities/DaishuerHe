@@ -34,15 +34,24 @@ function placeSpawn(board: Board, spawn: Exclude<SpawnResult, null>): Board {
 }
 
 function resetState(): void {
-  const next = createInitialState(configs, state.bestScore);
+  const next = createInitialState(configs, state.bestScoreStats, state.bestScoreDisplayMode);
   state.board = next.board;
   state.score = next.score;
-  state.bestScore = next.bestScore;
+  state.bestScoreStats = next.bestScoreStats;
+  state.bestScoreDisplayMode = next.bestScoreDisplayMode;
   state.moves = next.moves;
   state.status = next.status;
   state.eventLines = next.eventLines;
   state.completedCounts = next.completedCounts;
   state.gameOver = next.gameOver;
+}
+
+function persistCurrentScoreIfNeeded(): void {
+  if (state.moves === 0 && state.score === 0 && !state.gameOver) {
+    return;
+  }
+
+  state.bestScoreStats = saveBestScore(state.score);
 }
 
 function seedBoard(): void {
@@ -70,20 +79,15 @@ function applyCompletionCounts(events: MoveEvent[]): void {
   }
 }
 
-function updateGameOverState(board: Board): void {
+function updateGameOverState(board: Board): boolean {
+  const wasGameOver = state.gameOver;
+
   state.gameOver = !hasAvailableMove(board, DIRECTIONS, configMap);
   if (state.gameOver) {
     state.status = STATUS_TEXT.gameOver;
   }
-}
 
-function syncBestScore(): void {
-  if (state.score <= state.bestScore) {
-    return;
-  }
-
-  state.bestScore = state.score;
-  saveBestScore(state.bestScore);
+  return !wasGameOver && state.gameOver;
 }
 
 function setStatusAfterMove(scoreDelta: number): void {
@@ -101,8 +105,10 @@ function executeMove(direction: MoveDirection): void {
 
   const result = step(state.board, direction, configs, spawnPolicy);
   if (!result.changed) {
-    updateGameOverState(state.board);
-    if (!state.gameOver) {
+    const justGameOver = updateGameOverState(state.board);
+    if (justGameOver) {
+      persistCurrentScoreIfNeeded();
+    } else {
       state.status = STATUS_TEXT.noMove;
     }
 
@@ -115,10 +121,13 @@ function executeMove(direction: MoveDirection): void {
 
   const scoreDelta = result.rewards.reduce((acc, reward) => acc + (reward.reward?.score ?? 0), 0);
   state.score += scoreDelta;
-  syncBestScore();
   applyCompletionCounts(result.events);
 
-  updateGameOverState(state.board);
+  const justGameOver = updateGameOverState(state.board);
+  if (justGameOver) {
+    persistCurrentScoreIfNeeded();
+  }
+
   setStatusAfterMove(scoreDelta);
 
   state.eventLines = result.events.slice(-8).map(formatEvent);
@@ -133,15 +142,48 @@ function parseDirection(value: string | null): MoveDirection | null {
   return DIRECTIONS.includes(value as MoveDirection) ? (value as MoveDirection) : null;
 }
 
-document.addEventListener("keydown", (event) => {
-  const keyMap: Record<string, MoveDirection> = {
-    ArrowLeft: "Left",
-    ArrowRight: "Right",
-    ArrowUp: "Up",
-    ArrowDown: "Down"
-  };
+const KEY_TO_DIRECTION: Record<string, MoveDirection> = {
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  a: "Left",
+  A: "Left",
+  d: "Right",
+  D: "Right",
+  w: "Up",
+  W: "Up",
+  s: "Down",
+  S: "Down",
+  KeyA: "Left",
+  KeyD: "Right",
+  KeyW: "Up",
+  KeyS: "Down"
+};
 
-  const dir = keyMap[event.key];
+function isRestartKey(event: KeyboardEvent): boolean {
+  return event.key === "n" || event.key === "N" || event.code === "KeyN";
+}
+
+function restartGame(): void {
+  persistCurrentScoreIfNeeded();
+  seedBoard();
+  render(ui, state, configs);
+}
+
+function toggleBestScoreDisplay(): void {
+  state.bestScoreDisplayMode = state.bestScoreDisplayMode === "highest" ? "lowest" : "highest";
+  render(ui, state, configs);
+}
+
+document.addEventListener("keydown", (event) => {
+  if (isRestartKey(event)) {
+    event.preventDefault();
+    restartGame();
+    return;
+  }
+
+  const dir = KEY_TO_DIRECTION[event.key] ?? KEY_TO_DIRECTION[event.code];
   if (!dir) {
     return;
   }
@@ -159,11 +201,7 @@ document.querySelectorAll<HTMLButtonElement>("button[data-dir]").forEach((button
   });
 });
 
-function restartGame(): void {
-  seedBoard();
-  render(ui, state, configs);
-}
-
+ui.bestScoreButton.addEventListener("click", toggleBestScoreDisplay);
 ui.restartButton.addEventListener("click", restartGame);
 ui.retryButtonElement.addEventListener("click", () => {
   window.open(
