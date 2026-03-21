@@ -120,7 +120,8 @@ export function formatEvent(event: MoveEvent): string {
 function renderBoard(
   board: Board,
   boardElement: HTMLDivElement,
-  sequenceLengthMap: Map<string, number>
+  sequenceLengthMap: Map<string, number>,
+  hiddenTileIds: ReadonlySet<number>
 ): void {
   const fragment = document.createDocumentFragment();
   const columnCount = getBoardColumnCount(board);
@@ -137,8 +138,15 @@ function renderBoard(
       if (tile) {
         const tileElement = document.createElement("div");
         tileElement.className = tileClass(tile, sequenceLengthMap);
+        tileElement.dataset.tileId = String(tile.id);
         tileElement.style.setProperty("--tile-font-size", `${computeTileFontSize(tile, cellSize)}px`);
-        tileElement.textContent = tile.symbol;
+
+        const shouldHideText = hiddenTileIds.has(tile.id);
+        tileElement.textContent = shouldHideText ? "" : tile.symbol;
+        if (shouldHideText) {
+          tileElement.setAttribute("aria-label", tile.symbol);
+        }
+
         cell.appendChild(tileElement);
       }
 
@@ -185,6 +193,6 @@ export function render(ui: UiElements, state: GameState, configs: SequenceConfig
 
   const sequenceLengthMap = buildSequenceLengthMap(configs);
   renderCompletedCounts(ui.completedCountsElement, state.completedCounts, configs);
-  renderBoard(state.board, ui.boardElement, sequenceLengthMap);
+  renderBoard(state.board, ui.boardElement, sequenceLengthMap, state.hiddenTileIds);
   updateGameOverUI(ui, state.gameOver);
 }

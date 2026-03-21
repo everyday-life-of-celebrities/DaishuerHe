@@ -33,12 +33,36 @@ function placeSpawn(board: Board, spawn: Exclude<SpawnResult, null>): Board {
   return next;
 }
 
+function collectTileIds(board: Board): Set<number> {
+  const tileIds = new Set<number>();
+
+  for (const row of board) {
+    for (const tile of row) {
+      if (tile) {
+        tileIds.add(tile.id);
+      }
+    }
+  }
+
+  return tileIds;
+}
+
+function syncHiddenTileIds(board: Board): void {
+  const currentTileIds = collectTileIds(board);
+  for (const hiddenId of Array.from(state.hiddenTileIds)) {
+    if (!currentTileIds.has(hiddenId)) {
+      state.hiddenTileIds.delete(hiddenId);
+    }
+  }
+}
+
 function resetState(): void {
   const next = createInitialState(configs, state.bestScoreStats, state.bestScoreDisplayMode);
   state.board = next.board;
   state.score = next.score;
   state.bestScoreStats = next.bestScoreStats;
   state.bestScoreDisplayMode = next.bestScoreDisplayMode;
+  state.hiddenTileIds = next.hiddenTileIds;
   state.moves = next.moves;
   state.status = next.status;
   state.eventLines = next.eventLines;
@@ -65,6 +89,7 @@ function seedBoard(): void {
     state.board = placeSpawn(state.board, spawn);
   }
 
+  syncHiddenTileIds(state.board);
   updateGameOverState(state.board);
 }
 
@@ -117,6 +142,7 @@ function executeMove(direction: MoveDirection): void {
   }
 
   state.board = result.board;
+  syncHiddenTileIds(state.board);
   state.moves += 1;
 
   const scoreDelta = result.rewards.reduce((acc, reward) => acc + (reward.reward?.score ?? 0), 0);
@@ -220,6 +246,40 @@ function handleTouchCancel(): void {
   touchStartPoint = null;
 }
 
+function toggleTileTextVisibility(tileId: number): void {
+  if (state.hiddenTileIds.has(tileId)) {
+    state.hiddenTileIds.delete(tileId);
+    return;
+  }
+
+  state.hiddenTileIds.add(tileId);
+}
+
+function handleBoardClick(event: MouseEvent): void {
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const tileElement = target.closest<HTMLElement>(".tile[data-tile-id]");
+  if (!tileElement || !ui.boardElement.contains(tileElement)) {
+    return;
+  }
+
+  const tileIdValue = tileElement.dataset.tileId;
+  if (!tileIdValue) {
+    return;
+  }
+
+  const tileId = Number(tileIdValue);
+  if (!Number.isInteger(tileId)) {
+    return;
+  }
+
+  toggleTileTextVisibility(tileId);
+  render(ui, state, configs);
+}
+
 function isRestartKey(event: KeyboardEvent): boolean {
   return event.key === "n" || event.key === "N" || event.code === "KeyN";
 }
@@ -260,6 +320,7 @@ document.querySelectorAll<HTMLButtonElement>("button[data-dir]").forEach((button
   });
 });
 
+ui.boardElement.addEventListener("click", handleBoardClick);
 ui.boardElement.addEventListener("touchstart", handleTouchStart, { passive: true });
 ui.boardElement.addEventListener("touchend", handleTouchEnd, { passive: false });
 ui.boardElement.addEventListener("touchcancel", handleTouchCancel);

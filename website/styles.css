@@ -211,6 +211,8 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
   animation: pop 120ms ease-out;
+  cursor: pointer;
+  user-select: none;
 }
 
 .tile-l1 {

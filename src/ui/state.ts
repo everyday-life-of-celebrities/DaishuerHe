@@ -9,6 +9,7 @@ export type GameState = {
   score: number;
   bestScoreStats: BestScoreStats;
   bestScoreDisplayMode: BestScoreDisplayMode;
+  hiddenTileIds: Set<number>;
   moves: number;
   status: string;
   eventLines: string[];
@@ -34,6 +35,7 @@ export function createInitialState(
     score: 0,
     bestScoreStats,
     bestScoreDisplayMode,
+    hiddenTileIds: new Set<number>(),
     moves: 0,
     status: STATUS_TEXT.ready,
     eventLines: [],
