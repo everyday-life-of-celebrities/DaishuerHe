@@ -1,41 +1,12 @@
-import { canMergeTiles, type Board, type MoveDirection, type SequenceConfig } from "../core";
-
-type GridPosition = [number, number];
-
-function samePosition(a: GridPosition, b: GridPosition): boolean {
-  return a[0] === b[0] && a[1] === b[1];
-}
-
-function getLinePositions(rowCount: number, colCount: number, dir: MoveDirection, line: number): GridPosition[] {
-  const positions: GridPosition[] = [];
-
-  if (dir === "Left") {
-    for (let col = 0; col < colCount; col += 1) {
-      positions.push([line, col]);
-    }
-    return positions;
-  }
-
-  if (dir === "Right") {
-    for (let col = colCount - 1; col >= 0; col -= 1) {
-      positions.push([line, col]);
-    }
-    return positions;
-  }
-
-  if (dir === "Up") {
-    for (let row = 0; row < rowCount; row += 1) {
-      positions.push([row, line]);
-    }
-    return positions;
-  }
-
-  for (let row = rowCount - 1; row >= 0; row -= 1) {
-    positions.push([row, line]);
-  }
-
-  return positions;
-}
+import {
+  canMergeTiles,
+  getLinePositions,
+  samePosition,
+  type Board,
+  type MoveDirection,
+  type Position,
+  type SequenceConfig
+} from "../core";
 
 function hasSlideSpace(board: Board, dir: MoveDirection): boolean {
   const rowCount = board.length;
@@ -52,7 +23,7 @@ function hasSlideSpace(board: Board, dir: MoveDirection): boolean {
 
   for (let line = 0; line < lineCount; line += 1) {
     const positions = getLinePositions(rowCount, colCount, dir, line);
-    const occupied: GridPosition[] = [];
+    const occupied: Position[] = [];
 
     for (const pos of positions) {
       if (board[pos[0]][pos[1]] !== null) {

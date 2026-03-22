@@ -194,7 +194,17 @@ body {
   justify-content: center;
 }
 
+.complete-quote {
+  color: #f9f6f2;
+  background-color: #3c3a32;
+  padding: 0px 1px;
+  border-radius: 4px;
+}
+
 .tile {
+  --tile-bg: #eee4da;
+  --tile-color: #776e65;
+  --tile-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
   width: 100%;
   height: 100%;
   border-radius: 8px;
@@ -213,36 +223,10 @@ body {
   animation: pop 120ms ease-out;
   cursor: pointer;
   user-select: none;
-}
-
-.tile-l1 {
-  background: #eee4da;
-  color: #776e65;
-}
-
-.tile-l2 {
-  background: #ede0c8;
-  color: #776e65;
-}
-
-.tile-l3 {
-  background: #f2b179;
-  color: var(--text-light);
-}
-
-.tile-l4 {
-  background: #f59563;
-  color: var(--text-light);
-}
-
-.tile-l5 {
-  background: #f67c5f;
-  color: var(--text-light);
-}
-
-.tile-l6 {
-  background: #edcf72;
-  color: var(--text-light);
+  background: var(--tile-bg);
+  color: var(--tile-color);
+  box-shadow: var(--tile-shadow);
+  transition: background 150ms ease-out, box-shadow 150ms ease-out;
 }
 
 .controls {
@@ -281,6 +265,7 @@ body {
   from {
     transform: scale(0.92);
   }
+
   to {
     transform: scale(1);
   }
@@ -296,10 +281,12 @@ body {
     width: 100%;
   }
 }
+
 @keyframes fade-in {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
