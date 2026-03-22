@@ -19,6 +19,12 @@ export const RETRY_TEXT = ElPsyCongroo([30003, 35831, 20854, 20182, 23548, 24072
 /**
  * shouldUseStrategic := n * q >= N * p
  */
-export const StrategicRatio = { p: 9, q: 16 };
+export type StrategicRatio = {
+  p: number;
+  q: number;
+};
+
+export const DEFAULT_STRATEGIC_RATIO: StrategicRatio = { p: 13, q: 16 };
 
 export const BEST_SCORE_STORAGE_KEY = "sequence-grid.best-score.v1";
+export const STRATEGIC_RATIO_STORAGE_KEY = "sequence-grid.strategic-ratio.v1";

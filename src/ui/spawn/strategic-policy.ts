@@ -1,5 +1,5 @@
 import { createAtomicTile, type AtomDefinition, type SequenceConfig, type SpawnRequest, type SpawnResult } from "../../core";
-import { StrategicRatio } from "../constants";
+import type { StrategicRatio } from "../constants";
 import { randomFrom, randomSpawn } from "./random-policy";
 import { scoreSpawnCandidate } from "./scoring";
 
@@ -24,7 +24,8 @@ function getEmptyPositions(board: SpawnRequest["board"]): Array<[number, number]
 
 export function createStrategicSpawnPolicy(
   atomPool: AtomDefinition[],
-  configMap: Map<string, SequenceConfig>
+  configMap: Map<string, SequenceConfig>,
+  strategicRatio: StrategicRatio
 ): (req: SpawnRequest) => SpawnResult {
   return function strategicSpawnPolicy(req: SpawnRequest): SpawnResult {
     const empties = getEmptyPositions(req.board);
@@ -36,7 +37,7 @@ export function createStrategicSpawnPolicy(
     const colCount = req.board[0]?.length ?? 0;
     const totalCells = rowCount * colCount;
     const occupiedCells = totalCells - empties.length;
-    const shouldUseStrategic = totalCells > 0 && occupiedCells * StrategicRatio.q >= totalCells * StrategicRatio.p;
+    const shouldUseStrategic = totalCells > 0 && occupiedCells * strategicRatio.q >= totalCells * strategicRatio.p;
 
     if (!shouldUseStrategic) {
       return randomSpawn(empties, atomPool);

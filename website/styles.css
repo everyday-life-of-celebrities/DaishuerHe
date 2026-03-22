@@ -201,6 +201,25 @@ body {
   border-radius: 4px;
 }
 
+.text-span-button {
+  margin-left: 6px;
+  color: #8f7a66;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.text-span-button:hover {
+  color: #6f5d4d;
+}
+
+.text-span-button:focus-visible {
+  outline: 2px solid #8f7a66;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .tile {
   --tile-bg: #eee4da;
   --tile-color: #776e65;

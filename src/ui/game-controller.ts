@@ -10,7 +10,7 @@ import {
   type SpawnResult
 } from "../core";
 import { loadBestScore, saveBestScore } from "./best-score";
-import { DIRECTIONS, STATUS_TEXT } from "./constants";
+import { DIRECTIONS, STATUS_TEXT, type StrategicRatio } from "./constants";
 import { hasAvailableMove } from "./deadlock";
 import type { UiElements } from "./dom";
 import { formatEvent, render } from "./render";
@@ -46,11 +46,11 @@ function collectTileIds(board: Board): Set<number> {
   return tileIds;
 }
 
-export function createGameController(ui: UiElements, configs: SequenceConfig[]): GameController {
+export function createGameController(ui: UiElements, configs: SequenceConfig[], strategicRatio: StrategicRatio): GameController {
   const atomIndex = buildAtomIndex(configs);
   const atomPool = listAtomDefinitions(configs);
   const configMap = buildConfigMap(configs);
-  const spawnPolicy = createStrategicSpawnPolicy(atomPool, configMap);
+  const spawnPolicy = createStrategicSpawnPolicy(atomPool, configMap, strategicRatio);
 
   const state: GameState = createInitialState(configs, loadBestScore());
 

@@ -12,6 +12,8 @@ export type UiElements = {
   restartButton: HTMLButtonElement;
   gameMessageElement: HTMLDivElement;
   retryButtonElement: HTMLButtonElement;
+  adjustButtonElement: HTMLElement;
+  helpButtonElement: HTMLElement;
 };
 
 function requireElement<T extends Element>(selector: string): T {
@@ -33,6 +35,8 @@ export function mountUi(): UiElements {
   const eventsElement = requireElement<HTMLElement>("#events");
   const completedCountsElement = requireElement<HTMLUListElement>("#completed-counts");
   const restartButton = requireElement<HTMLButtonElement>("#restart");
+  const adjustButtonElement = requireElement<HTMLElement>("#adjust-button");
+  const helpButtonElement = requireElement<HTMLElement>("#help-button");
   const gamePanelElement = requireElement<HTMLElement>(".game-panel");
 
   const gameMessageElement = document.createElement("div");
@@ -62,7 +66,9 @@ export function mountUi(): UiElements {
     completedCountsElement,
     restartButton,
     gameMessageElement,
-    retryButtonElement
+    retryButtonElement,
+    adjustButtonElement, 
+    helpButtonElement, 
   };
 }
 
