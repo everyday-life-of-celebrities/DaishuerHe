@@ -24,7 +24,7 @@ export type StrategicRatio = {
   q: number;
 };
 
-export const DEFAULT_STRATEGIC_RATIO: StrategicRatio = { p: 13, q: 16 };
+export const DEFAULT_STRATEGIC_RATIO: StrategicRatio = { p: 11, q: 16 };
 
 export const BEST_SCORE_STORAGE_KEY = "sequence-grid.best-score.v1";
 export const STRATEGIC_RATIO_STORAGE_KEY = "sequence-grid.strategic-ratio.v1";
